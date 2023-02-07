@@ -7,17 +7,18 @@
  * the players to progress through the game!
  * 
  * This implementation allows for seamless detection of wires
- * connected correctly without additional external components.
+ * connected correctly without additional external components
+ * (assuming your microcontroller supports INPUT_PULLUP).
  * Tired of building labor intensive resistor or keypad arrays,
  * having them degrade over time, and reading noisy analog values?
  * Me too!
  * 
  * This implementation requires 2 IO pin assigments for each
- * wire connection. It is possible to rewrite this implementation
- * to use 1 IO pin and 1 input.
+ * wire connection.
  * 
  * by Adam Billingsley
- * created 6 Feb, 2023
+ * created  6 Feb, 2023
+ * modified 7 Feb, 2023
  */
 
 #define DEBUG true                  // Prints debug information to serial if true
@@ -61,14 +62,10 @@ void setup() {
     Serial.begin(19200);
   
   //All wire plugs initialized as inputs
-  pinMode(1, INPUT_PULLUP);
-  pinMode(2, INPUT_PULLUP);
-  pinMode(3, INPUT_PULLUP);
-  pinMode(4, INPUT_PULLUP);
-  pinMode(5, INPUT_PULLUP);
-  pinMode(6, INPUT_PULLUP);
-  pinMode(7, INPUT_PULLUP);
-  pinMode(8, INPUT_PULLUP);
+  for(int i=0; i<numWires; i++){
+    pinMode(solution[i][0], INPUT_PULLUP);
+    pinMode(solution[i][1], INPUT_PULLUP);
+  }
 }
 
 void loop() {
