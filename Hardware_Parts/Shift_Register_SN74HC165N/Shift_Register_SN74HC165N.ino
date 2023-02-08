@@ -135,9 +135,9 @@ void setup() {
   Serial.println();
   Serial.print("-----74HC165 demo-----");
   // Set all the pins of SN74HC165N, only the data pin is INPUT
-  pinMode (clockPin, OUTPUT);
-  pinMode (loadPin, OUTPUT);
-  pinMode (dataInPin, INPUT);
+  pinMode(clockPin, OUTPUT);
+  pinMode(loadPin, OUTPUT);
+  pinMode(dataInPin, INPUT);
 }
 
 void loop() {
