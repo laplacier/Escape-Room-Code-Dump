@@ -21,13 +21,17 @@
  * modified 7 Feb, 2023
  */
 
-#define DEBUG true                  // Prints debug information to serial if true
-#define numWires 4                  // Total wires in the puzzle solution
-const int solution[numWires][2] = { // Pin assignments per correct connection
-  {1,2},
-  {3,4},
-  {5,6},
-  {7,8}
+//-------------- SETTINGS & GLOBAL CONSTANTS -----------------//
+#define DEBUG true // Prints debug information to serial if true
+#define numWires 4 // Total wires in the puzzle solution
+
+
+//------------------ PUZZLE SOLUTION -------------------------//
+const int solution[numWires][2] = {
+  {1,2}, // DIO pin 1, DIO pin 2
+  {3,4}, // DIO pin 3, DIO pin 4
+  {5,6}, // DIO pin 5, DIO pin 6
+  {7,8}  // DIO pin 7, DIO pin 8
 };
 
 /* 

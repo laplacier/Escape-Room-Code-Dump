@@ -1,3 +1,45 @@
+/*
+ * This program is designed for use with SN74HC165N  and SN74HC595N
+ * shift registers.
+ * 
+ * PISO - Parallel in, Serial out. The SN74HC165N is a PISO
+ * register. It accepts 8 inputs in parallel and outputs their 
+ * states on one shiftable pin.
+ * SIPO - Serial in, parallel out. The SN74HC595N is a SIPO 
+ * register. It accepts 1 byte shifted in on one pin and outputs 
+ * each bit to 8 parallel outputs.
+ * 
+ * The last PISO register in the chain will 
+ * have nothing connected to pin 10, and the last SIPO register 
+ * will have nothing connected to pin 9.
+ * Each input pin of the PISO registers must be pulled high
+ * with a resistor (recommended values between 1k-10k)
+ * 
+ * PISO#0 __ __                         SIPO#0 __ __
+ *       |  U  |                              |  U  |
+ *  LOAD-|1  16|-VCC                        B-|1  16|-VCC
+ *   CLK-|2  15|-GND                        C-|2  15|-A
+ *     E-|3  14|-D                          D-|3  14|-DATA
+ *     F-|4  13|-C                          E-|4  13|-GND
+ *     G-|5  12|-B                          F-|5  12|-LATCH
+ *     H-|6  11|-A                          G-|6  11|-CLK
+ *      -|7  10|- to PISO#1 pin 9           H-|7  10|-VCC
+ *   GND-|8   9|-DATA                     GND-|8   9|- to SIPO#1 pin 14
+ *       |_____|                              |_____|
+ *      
+ * PISO#1 __ __                         SIPO#1 __ __
+ *       |  U  |                              |  U  |
+ *  LOAD-|1  16|-VCC                       B'-|1  16|-VCC
+ *   CLK-|2  15|-GND                       C'-|2  15|-A'
+ *    E'-|3  14|-D'                        D'-|3  14|- to SIPO#0 pin 9
+ *    F'-|4  13|-C'                        E'-|4  13|-GND
+ *    G'-|5  12|-B'                        F'-|5  12|-LATCH
+ *    H'-|6  11|-A'                        G'-|6  11|-CLK
+ *      -|7  10|- to PISO#2 pin 9, etc...  H'-|7  10|-VCC
+ *   GND-|8   9|- to PISO#0 pin 10        GND-|8   9|- to SIPO#2 pin 14, etc...
+ *       |_____|                              |_____|
+ */
+
 /* 
  * Function: printData
  * Accepts a byte and the name of the register. Prints
@@ -79,10 +121,10 @@ void readPISO(byte data[numPISO]){
  * written will be written to pin H of the last SIPO register in 
  * the chain.
  * 
- * If you had two SIPO registers daisy chained, with 0A denoting
+ * If you have two SIPO registers daisy chained, with 0A denoting
  * Pin A on the first SIPO register and 1A denoting Pin A on the
  * second SIPO register, the PHYSICAL order of pins being written
- * to would be the following:
+ * to will be the following:
  * 
  * Bit#: 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
  * Pin#: 1H 1G 1F 1E 1D 1C 1B 1A 0H 0G 0F 0E 0D 0C 0B 0A
@@ -92,7 +134,7 @@ void readPISO(byte data[numPISO]){
  * 
  * Example:
  * Suppose you have two SIPO registers in a chain and you input the
- * following...
+ * following bytes...
  * 
  * byte data = {127,1}; // (b01111111,b00000001)
  * 
