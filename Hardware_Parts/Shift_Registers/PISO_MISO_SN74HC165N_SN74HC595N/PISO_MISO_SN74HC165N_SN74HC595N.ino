@@ -1,10 +1,12 @@
 /*
  * SN74HC165N + SN74HC165N DEMO
  * 
- * PISO - Parallel in, Serial out. The SN74HC165N accepts 8 inputs
- * in parallel and outputs their states on one serial line
- * SIPO - Serial in, parallel out. The SN74HC595N accepts 1 serial
- * input byte and outputs each bit to 8 outputs in parallel
+ * PISO - Parallel in, Serial out. The SN74HC165N is a PISO 
+ * register. It accepts 8 inputs in parallel and outputs their 
+ * states on one serial line.
+ * SIPO - Serial in, parallel out. The SN74HC595N is a SIPO 
+ * register. It accepts 1 serial input byte and outputs each bit 
+ * to 8 outputs in parallel.
  * 
  * You have a lot of digital IO connections to make, but
  * not enough pins on your microcontroller to connect them all.
