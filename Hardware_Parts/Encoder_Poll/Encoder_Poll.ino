@@ -96,7 +96,7 @@
  * occurs to find the angular distance.
  */
 
-#define DEBUG false           // Toggle printing to serial. Serial communication WILL significantly slow down polling.
+#define DEBUG true            // Toggle printing to serial. Serial communication WILL significantly slow down polling.
 #define encPinA 2             // Encoder pin A
 #define encPinB 3             // Encoder pin B
 #define pulsesPerRotation 400 // The resolution, or number of pulses required to make a full rotation. Varies between encoder models.
