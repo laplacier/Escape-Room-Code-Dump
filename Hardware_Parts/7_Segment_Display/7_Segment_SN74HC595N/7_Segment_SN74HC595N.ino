@@ -303,21 +303,35 @@ byte getDisplayByte(char character, bool decimal){
  * obtains relevant byte(s) from getDisplayByte() and sends 
  * byte(s) to SIPO register(s).
  *
+ *     Input:     updateDisplay(1337);
+ * Func Sees:      1   3   3   7 
+ *  Displays:     [1 ][3 ][3 ][7 ]
+ *  
+ *     Input:     updateDisplay("HI",1);
+ * Func Sees:          H   I 
+ *  Displays:     [  ][H ][I ][  ]
+ *
  * For inputs that are OOB, we drop the LSBFIRST until the
  * input is valid.
- * 
- *     Issue: Size too large
- *     Input:  1   2   F   C   5 
+ *     
+ *     Input:     updateDisplay("12FC5");
+ * Func Sees:  1   2   F   C   5 
  *  Displays:     [1 ][2 ][F ][C ]
- *     Input:   .  1   2   3   4 
+ *     
+ *     Input:     updateDisplay(0.1234);
+ * Func Sees:  0.  1   2   3   4 
  *  Displays:     [ .][1 ][2 ][3 ]
- *  
- *     Issue: Size ok, out of bounds position
- *     Input:              H   E   L   P 
+ *     
+ *     Input:     updateDisplay("HELP",-2);
+ * Func Sees:              H   E   L   P 
  *  Displays:     [  ][  ][H ][E ]
- *     Input:  y   o   t   E
+ *     
+ *     Input:     updateDisplay("yotE",1);
+ * Func Sees:  y   o   t   E
  *  Displays:     [y ][o ][t ][  ]
- *     Input:  A
+ *     
+ *     Input:     updateDisplay('A',4);
+ * Func Sees::  A
  *  Displays:     [  ][  ][  ][  ]
  */
 void updateDisplay(String message, byte pos=0){
@@ -327,11 +341,14 @@ void updateDisplay(double number, byte pos=0){
 void updateDisplay(int number, byte pos=0){
   if(number < 10
 }
-void updateDisplay(byte number, bool decimal=0, byte pos=0){
-  if(number >= 10)
-    updateDisplay((char)number, decimal, pos);
+void updateDisplay(byte number, byte pos=0, bool decimal=0){
+  if(number >= 10){                             // If the number larger than a single digit...
+    
+  }
+  else                                          // Otherwise...
+    updateDisplay((char)number, decimal, pos);  // Single digit number, convert to char and send to char function
 }
-void updateDisplay(char character, bool decimal=0, byte pos=0){ // Update a single 7-segment display and decimal point
+void updateDisplay(char character, byte pos=0, bool decimal=0){ // Update a single 7-segment display and decimal point
   if(pos <= numSIPO-1 && pos >=0){                              // If position to update is in bounds...
     outputData[pos] = getDisplayByte(character, decimal);       // Modify the specified 7-segment display
     sendSIPO(outputData);                                       // Send the changes to SIPO registers
