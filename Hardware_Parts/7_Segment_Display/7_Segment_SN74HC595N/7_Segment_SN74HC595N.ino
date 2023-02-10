@@ -32,20 +32,20 @@
  * means we can control each segment the same way we would
  * toggle an LED on and off!
  * 
- * 7-Segment Pinout              Pin to Segment Locations
- *                                    ______________
- *       COM                         |      A       |
- *    G F | A B                   __ `--------------' __
- *    |_|_|_|_|                  |  |                |  |
- *   |   ====  |                 | F|                |B |
- *   |  ||  || |                 |  | ______________ |  |
- *   |   ====  |                 `--'|      G       |`--'
- *   |  ||  || |                  __ `--------------' __
- *   |   ==== o|                 |  |                |  |
- *   `---------'                 | E|                |C |
- *    | | | | |                  |  | ______________ |  |  __
- *    E D | C H                  `--'|      D       |`--' |H |
- *       COM                         `--------------'     `--'
+ *  7-Segment Pinout            Pin to Segment Locations
+ *                                    __________
+ *       COM                         |    A     |
+ *    G F | A B                   __ `----------' __
+ *    |_|_|_|_|                  |  |            |  |
+ *   |   ====  |                 | F|            |B |
+ *   |  ||  || |                 |  | __________ |  |
+ *   |   ====  |                 `--'|    G     |`--'
+ *   |  ||  || |                  __ `----------' __
+ *   |   ==== o|                 |  |            |  |
+ *   `---------'                 | E|            |C |
+ *    | | | | |                  |  | __________ |  |  __
+ *    E D | C H                  `--'|    D     |`--' |H |
+ *       COM                         `----------'     `--'
  * 
  * 7-segment displays come in two configurations which are important
  * to take note of when connecting and operating the display. We can
@@ -64,7 +64,7 @@
  *                                | \ |
  *                                |  \|
  *                                
- *   Common anode - The segments of the display turn on when COM is
+ *  Common anode  - The segments of the display turn on when COM is
  *                  connected to VCC and the segment is pulled LOW.
  *                                
  *                              Segment A    
@@ -98,11 +98,89 @@
  * created 9 Feb, 2023
  */
 
-#define COMMON_MODE 1 // 0 for Common Anode, 1 for Common Cathode
-#define numSIPO     1 // Number of 7-segment displays and SIPO registers
-#define latchPin    4 // Pin 12 on all SN74HC595N
-#define clockPin    7 // Pin 11 on all SN74HC595N
-#define dataOutPin  6 // Pin 14 on FIRST SN74HC595N
+#define COMMON_MODE 1     // 0 for Common Anode, 1 for Common Cathode
+#define numSIPO     2     // Number of 7-segment displays and SIPO registers
+#define latchPin    4     // Pin 12 on all SN74HC595N
+#define clockPin    7     // Pin 11 on all SN74HC595N
+#define dataOutPin  6     // Pin 14 on FIRST SN74HC595N
+byte outputData[numSIPO]; // SIPO data to send and update 7-segment displays
+
+/* 
+ * Function: pulsePin
+ * Accepts a digital output pin and a pulse time
+ * Pulses a pin LOW for the specified pulse time
+ * in microseconds.
+ */
+void pulsePin(int pinName, int pulseTime){
+  digitalWrite(pinName, LOW);
+  delayMicroseconds(pulseTime);
+  digitalWrite(pinName, HIGH);
+  delayMicroseconds(pulseTime);
+}
+
+/* 
+ * Function: printData
+ * Accepts a byte and the name of the register. Prints
+ * the name of the register submitted and prints the byte
+ * in the expected format returned from readPISO() or sent
+ * to sendSIPO()
+ */
+void printData(byte data, String regName, int regNum){
+  Serial.print("    ");                        
+  Serial.print(regName);            // Print the register name
+  Serial.print(regNum);             // Print the register number        
+  Serial.print(": ");
+  for (int j=0; j<8; j++){          // For each bit...
+    Serial.print(bitRead(data, j)); // Print the data to/from the
+    Serial.print(" ");              // shift register in LSBFIRST order
+  }
+  Serial.println();
+}
+
+/* 
+ * Function: sendSIPO
+ * Accepts a byte array in LSBFIRST order and writes the data to 
+ * the SIPO registers.
+ * 
+ * Per the datasheet, data is written MSBFIRST, so the first bit
+ * written will be written to pin H of the last SIPO register in 
+ * the chain.
+ * 
+ * If you had two SIPO registers daisy chained, with 0A denoting
+ * Pin A on the first SIPO register and 1A denoting Pin A on the
+ * second SIPO register, the PHYSICAL order of pins being written
+ * to would be the following:
+ * 
+ * Bit#: 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
+ * Pin#: 1H 1G 1F 1E 1D 1C 1B 1A 0H 0G 0F 0E 0D 0C 0B 0A
+ * 
+ * However, this function reads the data from the byte array
+ * in MSBFIRST order for ease of programming and readability.
+ * 
+ * Example:
+ * Suppose you have two SIPO registers in a chain and you input the
+ * following...
+ * 
+ * byte data = {127,1}; // (b01111111,b00000001)
+ * 
+ * The resulting output on the SIPO registers will be...
+ * Pin States: A B C D E F G H
+ *     SIPO#0: 0 1 1 1 1 1 1 1
+ *     SIPO#1: 0 0 0 0 0 0 0 1
+ */
+void sendSIPO(byte data[numSIPO]){
+  for(int i=numSIPO-1; i>=0; i--){                    // For each SIPO register...
+    const String nameSIPO = "SIPO#";                  // Create register name
+    printData(data[i], nameSIPO, i);                  // Print expected output to serial
+    for(int j=7; j>=0; j--){                          // For each bit in the register...
+       if(!COMMON_MODE)                               // If 7-segment display is in common anode configuration...
+        data[i] = !data[i];                           // Invert the ON/OFF byte of the input variable
+       digitalWrite(dataOutPin, bitRead(data[i], j)); // Read the current bit of the input variable and write it to the SIPO data pin
+       pulsePin(clockPin, 5);                         // Pulse the clock to shift the bit out to SIPO registers
+    }
+  }
+  pulsePin(latchPin, 5);                              // Pulse the latch to allow new data to appear on SIPO registers
+}
 
 /* 
  * Function: getDisplayByte
@@ -110,11 +188,17 @@
  * switch case to determine which segments to turn on
  * based on the input character. For characters that
  * have no relevant display, nothing is shown.
+ * 
+ * Returns a byte of containing each segment state in
+ * LSBFIRST order.
  */
 byte getDisplayByte(char character, bool decimal){
-  byte segments;             // Stores the ON/OFF state of each segment to update
+  byte segments;                  // Stores the ON/OFF state of each segment to update
   bitWrite(segments, 7, decimal); // Write decimal flag to segments bit 7 (pin H)
-  switch(character){         // Determine which segments to turn on based on the input character
+  switch(character){              // Determine which segments to turn on based on the input character
+    case '.': case ',':
+      segments = 0b10000000; // In case a single decimal is passed, decimal ON
+      break;
     case '0': case 'O': case 'D':
       segments = 0b0111111;  // F,E,D,C,B,A ON
       break;
@@ -209,12 +293,48 @@ byte getDisplayByte(char character, bool decimal){
       segments = 0b0000000;  // Unknown, all OFF
       break;
   }
+  return segments;           // Send the segment byte 
+}
 
-  // Use predefined COMMON_MODE to determine whether to pull the pins HIGH or LOW
-  bool ON  =  COMMON_MODE;                // HIGH for Common Cathode, LOW for Common Anode
-  bool OFF = !COMMON_MODE;                // LOW for Common Cathode, HIGH for Common Anode
-                    
-  sendSIPO(segments);
+/* 
+ * Function: updateDisplay
+ * Accepts a character and bool, int, or string. Function 
+ * overloaded to handle conversion of these type(s),
+ * obtains relevant byte(s) from getDisplayByte() and sends 
+ * byte(s) to SIPO register(s).
+ *
+ * For inputs that are OOB, we drop the LSBFIRST until the
+ * input is valid.
+ * 
+ *     Issue: Size too large
+ *     Input:  1   2   F   C   5 
+ *  Displays:     [1 ][2 ][F ][C ]
+ *     Input:   .  1   2   3   4 
+ *  Displays:     [ .][1 ][2 ][3 ]
+ *  
+ *     Issue: Size ok, out of bounds position
+ *     Input:              H   E   L   P 
+ *  Displays:     [  ][  ][H ][E ]
+ *     Input:  y   o   t   E
+ *  Displays:     [y ][o ][t ][  ]
+ *     Input:  A
+ *  Displays:     [  ][  ][  ][  ]
+ */
+void updateDisplay(String message, byte pos=0){
+}
+void updateDisplay(double number, byte pos=0){
+}
+void updateDisplay(int number, byte pos=0){
+  if(number < 10
+}
+void updateDisplay(byte number, bool decimal=0, byte pos=0){
+  if(number >= 10)
+    updateDisplay((char)number, decimal, pos);
+}
+void updateDisplay(char character, bool decimal=0, byte pos=0){ // Update a single 7-segment display and decimal point
+  if(pos <= numSIPO-1 && pos >=0){                              // If position to update is in bounds...
+    outputData[pos] = getDisplayByte(character, decimal);       // Modify the specified 7-segment display
+    sendSIPO(outputData);                                       // Send the changes to SIPO registers
   }
 }
 
@@ -229,12 +349,12 @@ void setup() {
 
 void loop() {
   for(int i=0; i<10; i++){     // For each number 0-9...
-    updateDisplay((char)i, 0); // Show number on display, no decimal
+    Serial.println("Pin States: A B C D E F G H"); // Print header row in LSBFIRST order
+    updateDisplay((char)i, 0); // Show numbers on displays, no decimal
     delay(500);                // Wait before showing next number
   }
-  String message = "AbCdEFGH";           // Create a string to update on the display
-  for(int i=0; i<message.length(); i++){ // For each character in the string...
-    updateDisplay(message.charAt(i), 0); // Show character on display, no decimal
-    delay(500);                          // Wait before showing next character
-  }
+  String message = "AbCdEFGH";                   // Create a string to update on the display
+  Serial.println("Pin States: A B C D E F G H"); // Print header row in LSBFIRST order
+  updateDisplay(message.charAt(i), 0);           // Show character on display, no decimal
+  delay(500);                                    // Wait before showing next character
 }

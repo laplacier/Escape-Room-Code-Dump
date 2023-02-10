@@ -23,20 +23,20 @@
  * means we can control each segment the same way we would
  * toggle an LED on and off!
  * 
- * 7-Segment Pinout              Pin to Segment Locations
- *                                    ______________
- *       COM                         |      A       |
- *    G F | A B                   __ `--------------' __
- *    |_|_|_|_|                  |  |                |  |
- *   |   ====  |                 | F|                |B |
- *   |  ||  || |                 |  | ______________ |  |
- *   |   ====  |                 `--'|      G       |`--'
- *   |  ||  || |                  __ `--------------' __
- *   |   ==== o|                 |  |                |  |
- *   `---------'                 | E|                |C |
- *    | | | | |                  |  | ______________ |  |  __
- *    E D | C H                  `--'|      D       |`--' |H |
- *       COM                         `--------------'     `--'
+ * 7-Segment Pinout            Pin to Segment Locations
+ *                                    __________
+ *       COM                         |    A     |
+ *    G F | A B                   __ `----------' __
+ *    |_|_|_|_|                  |  |            |  |
+ *   |   ====  |                 | F|            |B |
+ *   |  ||  || |                 |  | __________ |  |
+ *   |   ====  |                 `--'|    G     |`--'
+ *   |  ||  || |                  __ `----------' __
+ *   |   ==== o|                 |  |            |  |
+ *   `---------'                 | E|            |C |
+ *    | | | | |                  |  | __________ |  |  __
+ *    E D | C H                  `--'|    D     |`--' |H |
+ *       COM                         `----------'     `--'
  * 
  * 7-segment displays come in two configurations which are important
  * to take note of when connecting and operating the display. We can
@@ -55,7 +55,7 @@
  *                                | \ |
  *                                |  \|
  *                                
- *   Common anode - The segments of the display turn on when COM is
+ *  Common anode  - The segments of the display turn on when COM is
  *                  connected to VCC and the segment is pulled LOW.
  *                                
  *                              Segment A    
@@ -113,8 +113,12 @@ void updateDisplay(char character, bool decimal){
     digitalWrite(pinH, ON);  // Turn on the decimal
   else                       // Otherwise...
     digitalWrite(pinH, OFF); // Turn off the decimal
-
+  byte segments = 0b0000000; // Initialize all segments to OFF (0)
+  
   switch(character){         // Determine which segments to turn on based on the input character
+    case '.': case ',':
+      segments = 0b10000000; // In case a single decimal is passed, decimal ON
+      break;
     case '0': case 'O': case 'D':
       segments = 0b0111111;  // F,E,D,C,B,A ON
       break;
@@ -209,18 +213,12 @@ void updateDisplay(char character, bool decimal){
       break;
   }
 
-  // Use predefined COMMON_MODE to determine whether to pull the pins HIGH or LOW
-  bool ON  =  COMMON_MODE;                // HIGH for Common Cathode, LOW for Common Anode
-  bool OFF = !COMMON_MODE;                // LOW for Common Cathode, HIGH for Common Anode
-  byte segments = 0b0000000;              // Initialize all segments to OFF (0)
-  byte segPin[7] = {pinA,pinB,pinC,pinD,  // Store segment pins in array for the following loop
-                    pinE,pinF,pinG}; 
-                    
-  for(int i=0; i<7; i++){                 // For each segment...
-    if(bitRead(segments,i))               // If the segment is flagged ON...
-      digitalWrite(segPin[i], ON);        // Turn on the segment
-    else                                  // Otherwise...
-      digitalWrite(segPin[i], OFF);       // Turn off the segment
+  if(!COMMON_MODE)                                // If 7-segment display is in common anode configuration...
+    segments = !segments;                         // Invert the ON/OFF states of the segments
+  byte segPin[7] = {pinA,pinB,pinC,pinD,          // Store segment pins in array for the following loop
+                    pinE,pinF,pinG};                     
+  for(int i=0; i<7; i++){                         // For each segment A-G...
+    digitalWrite(segPin[i], bitRead(segments,i)); // Turn segment ON or OFF
   }
 }
 
