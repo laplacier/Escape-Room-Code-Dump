@@ -95,7 +95,8 @@
  *       |_____|                           |_____|
  *       
  * by Adam Billingsley
- * created 9 Feb, 2023
+ * created   9 Feb, 2023
+ * modified 10 Feb, 2023
  */
 
 #define COMMON_MODE 1     // 0 for Common Anode, 1 for Common Cathode
@@ -311,16 +312,16 @@ byte getDisplayByte(char character, bool decimal){
  * Func Sees:          H   I 
  *  Displays:     [  ][H ][I ][  ]
  *
- * For inputs that are OOB, we drop the LSBFIRST until the
- * input is valid.
+ * For inputs that are OOB, we only print characters that
+ * are within the bounds of the display.
  *     
  *     Input:     updateDisplay("12FC5");
  * Func Sees:  1   2   F   C   5 
- *  Displays:     [1 ][2 ][F ][C ]
+ *  Displays:     [2 ][F ][C ][5 ]
  *     
  *     Input:     updateDisplay(0.1234);
  * Func Sees:  0.  1   2   3   4 
- *  Displays:     [ .][1 ][2 ][3 ]
+ *  Displays:     [1 ][2 ][3 ][4 ]
  *     
  *     Input:     updateDisplay("HELP",-2);
  * Func Sees:              H   E   L   P 
@@ -328,31 +329,39 @@ byte getDisplayByte(char character, bool decimal){
  *     
  *     Input:     updateDisplay("yotE",1);
  * Func Sees:  y   o   t   E
- *  Displays:     [y ][o ][t ][  ]
+ *  Displays:     [o ][t ][E ][  ]
  *     
  *     Input:     updateDisplay('A',4);
- * Func Sees::  A
+ * Func Sees:  A
  *  Displays:     [  ][  ][  ][  ]
  */
-void updateDisplay(String message, byte pos=0){
-}
-void updateDisplay(double number, byte pos=0){
-}
-void updateDisplay(int number, byte pos=0){
-  if(number < 10
-}
-void updateDisplay(byte number, byte pos=0, bool decimal=0){
-  if(number >= 10){                             // If the number larger than a single digit...
-    
-  }
-  else                                          // Otherwise...
-    updateDisplay((char)number, decimal, pos);  // Single digit number, convert to char and send to char function
-}
 void updateDisplay(char character, byte pos=0, bool decimal=0){ // Update a single 7-segment display and decimal point
   if(pos <= numSIPO-1 && pos >=0){                              // If position to update is in bounds...
     outputData[pos] = getDisplayByte(character, decimal);       // Modify the specified 7-segment display
     sendSIPO(outputData);                                       // Send the changes to SIPO registers
   }
+}
+void updateDisplay(String message, byte pos=0){
+  bool decimal = 0;
+  for(int i=0; i<message.length(); i++){              // For each character in the string...
+    char letter = message.charAt(i);                  // Store the character
+    if(letter == '.')                                 // If character is a decimal...
+      decimal = 1;                                    // Raise decimal flag, don't go to next segment
+    else{                                             // Otherwise..
+      updateDisplay(message.charAt(i), pos, decimal); // Send the character to be processed
+      decimal = 0;                                    // Lower decimal flag
+      pos++;                                          // Move to next segment
+    }
+  }
+}
+void updateDisplay(byte number, byte pos=0){
+  updateDisplay(String(number), pos);  // Pass through to string function as string
+}
+void updateDisplay(int number, byte pos=0){
+  updateDisplay(String(number), pos);  // Pass through to string function as string
+}
+void updateDisplay(double number, byte pos=0){
+  updateDisplay(String(number), pos);  // Pass through to string function as string
 }
 
 void setup() {
@@ -365,13 +374,13 @@ void setup() {
 }
 
 void loop() {
-  for(int i=0; i<10; i++){     // For each number 0-9...
+  for(int i=0; i<10; i++){                         // For each number 0-9...
     Serial.println("Pin States: A B C D E F G H"); // Print header row in LSBFIRST order
-    updateDisplay((char)i, 0); // Show numbers on displays, no decimal
-    delay(500);                // Wait before showing next number
+    updateDisplay((char)i, i%numSIPO);             // Show numbers on displays, no decimal
+    delay(500);                                    // Wait before showing next number
   }
-  String message = "AbCdEFGH";                   // Create a string to update on the display
-  Serial.println("Pin States: A B C D E F G H"); // Print header row in LSBFIRST order
-  updateDisplay(message.charAt(i), 0);           // Show character on display, no decimal
-  delay(500);                                    // Wait before showing next character
+  String message = "AbCdEFGH";                     // Create a string to update on the display
+  Serial.println("Pin States: A B C D E F G H");   // Print header row in LSBFIRST order
+  updateDisplay(message, 0);                       // Show character on display, no decimal
+  delay(500);                                      // Wait before showing next character
 }
