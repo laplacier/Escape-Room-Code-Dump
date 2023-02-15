@@ -20,14 +20,18 @@
  * modified 7 Feb, 2023
  */
 
-//-------------- SETTINGS & GLOBAL CONSTANTS -----------------//
-#define DEBUG true       // Prints debug information to serial if true
-#define numWires   8     // Total wires in the puzzle solution
-#define numPISO    1     // Number of PISO registers in daisy chain
-#define numSIPO    1     // Number of SIPO registers in daisy chain
-byte inputData[numPISO]; // Stores PISO data
-
-
+//-------------- SETTINGS & GLOBAL VARIABLES -----------------//
+#define DEBUG true           // Prints debug information to serial if true
+#define numWires   8         // Total wires in the puzzle solution
+#define numPISO    1         // Number of PISO registers in daisy chain
+#define numSIPO    1         // Number of SIPO registers in daisy chain
+byte inputData[numPISO];     // Stores PISO data
+byte outputData[numSIPO];    // Stores data to send to SIPO registers
+bool wiresCorrect[numWires]; // Array of all currently correct wires
+byte inputOld[numPISO];      // Stores previous PISO data
+byte outputOld[numSIPO];     // Stores previous data sent to SIPO registers
+bool wiresOld[numWires];     // Array of all previously correct wires
+bool flag_solved = false;    // Flag for completed puzzle
 //------------------ PUZZLE SOLUTION -------------------------//
 const int solution[numWires][2] = {
   {0,0}, //PISO#0 pin A, SIPO#0 pin A
@@ -49,10 +53,12 @@ const int solution[numWires][2] = {
 
 //---------------- FUNCTION PROTOTYPES -----------------------//
 bool checkWires();
+bool isDataNew();
 void printData(byte data, String regName, int regNum);
 void pulsePin(int pinName, int pulseTime);
 void readPISO(byte data[numPISO]);
 void sendSIPO(byte data[numSIPO]);
+void debug();
 
 void setup(){
   if(DEBUG)
@@ -72,9 +78,8 @@ void setup(){
 
 void loop(){
   if(checkWires()){ //If the wires are all connected properly...
-    //The puzzle is solved!
-    if(DEBUG)
-      Serial.println("All wires connected, puzzle solved!");
+    //The puzzle is solved, do a thing!
   }
-  delay(500);
+  if(DEBUG)
+    debug();
 }

@@ -41,6 +41,19 @@
  */
 
 /* 
+ * Function: isDataNew
+ * Checks all PISO register states, returns true
+ * when a change is detected.
+ */
+bool isDataNew(){
+  for(int i=0; i<numPISO; i++){
+    if(inputData[i] != inputOld[i])
+      return true;
+  }
+  return false;
+}
+
+/* 
  * Function: printData
  * Accepts a byte and the name of the register. Prints
  * the name of the register submitted and prints the byte
@@ -146,8 +159,6 @@ void readPISO(byte data[numPISO]){
 void sendSIPO(byte data[numSIPO]){
   for(int i=numSIPO-1; i>=0; i--){                    // For each SIPO register...
     if(DEBUG){
-      const String nameSIPO = "SIPO#";                // Create register name
-      printData(data[i], nameSIPO, i);                // Print expected output to serial
     }
     for(int j=7; j>=0; j--){                          // For each bit in the register...
        digitalWrite(dataOutPin, bitRead(data[i], j)); // Read the current bit of the input variable and write it to the SIPO data pin

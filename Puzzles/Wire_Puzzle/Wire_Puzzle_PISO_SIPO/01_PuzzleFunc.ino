@@ -4,8 +4,7 @@
  * Returns true if all wires are connected correctly
  */
 bool checkWires(){
-  bool flag_solved = true;                        // Flag that solves the puzzle. True until proven false
-  byte outputData[numSIPO];                       // Byte array stores data to send to SIPO registers
+  flag_solved = true;                             // Flag that solves the puzzle. True until proven false
   for(int i=0; i<numSIPO; i++){                   // For each byte of SIPO data...
     outputData[i] = 255;                          // Initialize all bits to HIGH
   }
@@ -22,14 +21,10 @@ bool checkWires(){
     const byte rowPISO = solution[i][1] % 8;      // Determine which bit of the PISO byte to read
     if(bitRead(inputData[columnPISO], rowPISO)){  // If the second end of the wire detects the LOW pull...
                                                   // Optional: do anything to reward the single correct connection!
-      if(DEBUG){
-        Serial.print("Correct connection detected between SIPO bit ");
-        Serial.print(solution[i][0]);
-        Serial.print(" and PISO bit ");
-        Serial.println(solution[i][1]);
-      }
+      wiresCorrect[i] = true;                     // Flag current wire as connected
     }
     else{
+      wiresCorrect[i] = false;                    // Flag current wire as not connected
       flag_solved = false;                        // A wire is connected improperly, don't solve the game
     }
 
