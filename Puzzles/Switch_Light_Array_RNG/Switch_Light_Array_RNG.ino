@@ -16,8 +16,7 @@
  * PISO and SIPO registers.
  * 
  * by Adam Billingsley
- * created  6 Feb, 2023
- * modified 7 Feb, 2023
+ * created  17 Feb, 2023
  */
 
 //-------------- SETTINGS & GLOBAL VARIABLES -----------------//
