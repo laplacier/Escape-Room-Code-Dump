@@ -43,9 +43,16 @@
  *     complexity for a randomly generated puzzle.
  *   - Generating a unique solution to a puzzle with cause and effect
  *     elements.
- *     
+ * 
+ * Common bit shifting shortcuts you will see in this program:
+ *                n >> m = Divide n by 2^m, rounded down
+ *                n << m = Multiply n by 2^m
+ * (n & 0x01) + (n >> m) = Divide n by 2^m, rounded up
+ * (n & 0x01) + (n >> 1) = The number of odd numbers from 0 to n
+ *       (n << 1) | 0x01 = The nth odd number
+ *
  * by Adam Billingsley
- * created  17 Feb, 2023
+ * created  20 Feb, 2023
  */
 
  /*==========================GLOBAL SETTINGS============================//
@@ -57,56 +64,15 @@
  *     extend to infinite numbers and lengths.
  */
 #define DEBUG false
-#define numSolution 3  // Number of rows in the unique solution
-#define numRow      5  // Total number of rows
-#define arrSize     5  // Total number of boolean vals in a row
-static const int combos = math.pow(2,arrSize); //Calculate the total number of cominbinations possible for an array
-static const char BIT_LOOKUP[16] = { // Lookup table for number of bits set in a byte
-  0, 1, 1, 2, 1, 2, 2, 3, 
-  1, 2, 2, 3, 2, 3, 3, 4
-};
-byte solution[numRow]; // Stores valid pattern
-
-void debug(byte state, int randNum, int pos){
-  for(int i=0; i<numRow; i++){
-    Serial.print(solution[i]);  
-    Serial.print(" ");
-  }
-  Serial.print("Number to insert: ");
-  Serial.print(randNum);
-  Serial.print(" Starting at index: ");
-  Serial.println(pos);
-}
-
-void debug(byte state, byte arr[numSolution], int lower, int upper){
-  for(int i=0; i<numRow; i++){
-    Serial.print(arr[i]);
-    Serial.print(" ");
-  }
-  Serial.print("Lower Bound: ");
-  Serial.print(lower);
-  Serial.print(" Upper Bound: ");
-  Serial.println(upper);
-}
-
-/* 
- * Function: getLightCount
- * Takes a light pattern and returns number of lights that are on.
- * Uses bit shifting with a static lookup table to speed this process up
- * which helps tremendously with larger amounts of lights.
- */
-byte getLightCount(int lights){
-  byte count = 0;
-  while(!lights){ // While ON lights still exist...
-    count += BIT_LOOKUP[lights & 0x0F]; // Grab number of ON lights in current 4 lights
-    lights >>= 4; // Remove those 4 lights and move to the next 4
-  }
-  return count; 
-}
+#define numSolution 13  // Number of arrays in the unique solution
+#define numRow      20  // Total number of arrays
+#define arrSize     10  // Total number of boolean vals in an array
+int pattern[numRow]; // Stores valid pattern
+byte solution[numSolution]; // Stores the index of the solution arrays
 
 /*
  * Function: shiftOutLeft
- * This function accepts a resevoir sampling array, the position to start 
+ * This function accepts a reservoir sampling array, the position to start 
  * shifting, and the upper bound of the shift. Shifts the array left from 
  * these two bounds. Does not resize the input array to increase speed; 
  * user must handle ignoring the unnecessary values.
@@ -127,8 +93,8 @@ byte getLightCount(int lights){
  *  
  *  - Decrement Upper bound by 1 and exit.
  */
-void shiftOutLeft(int arr[combos], int *upper, int pos){
-  for(int i=pos; i<*upper; i++){ // Starting at index=pos, for each index of the array to the upper bound...
+void shiftOutLeft(long arr[], long *upper, long pos){
+  for(long i=pos; i<*upper; i++){ // Starting at index=pos, for each index of the array to the upper bound...
     arr[i] = arr[i+1];      // Shift index on the right to the current index.
   }
   (*upper)--;                      // Decrement upper bound by 1 to ignore useless data
@@ -136,7 +102,7 @@ void shiftOutLeft(int arr[combos], int *upper, int pos){
 
 /*
  * Function: shiftOutRight
- * This function accepts a resevoir sampling array, the position to finish 
+ * This function accepts a reservoir sampling array, the position to finish 
  * shifting, and the lower bound of the shift. Shifts the array right from 
  * these two bounds. Does not resize the input array to increase speed; 
  * user must handle ignoring the unnecessary values.
@@ -157,8 +123,8 @@ void shiftOutLeft(int arr[combos], int *upper, int pos){
  *  
  *  - Increment Lower bound by 1 and exit.
  */
-void shiftOutRight(int arr[combos], int *lower, int pos){
-  for(int i=pos-1; i>=*lower; i--){ // Starting at index=pos-1, for each index of the array to resLower...
+void shiftOutRight(long arr[], long *lower, long pos){
+  for(long i=pos-1; i>=*lower; i--){ // Starting at index=pos-1, for each index of the array to resLower...
     arr[i+1] = arr[i];         // Shift index on the current index to the right.
   }
   (*lower)++;                         // Increment lower bound by 1 to ignore useless data
@@ -195,136 +161,144 @@ void shiftOutRight(int arr[combos], int *lower, int pos){
 void shiftInRight(int insert, int pos, int upper){
   int temp;
   for(int i=pos; i<=upper; i++){   // Starting at index=pos, for each index of the array that has a pattern value...
-    temp = solution[i];            // Store current number in a temp var
-    solution[i] = insert;          // Insert the shifted number into the pattern
+    temp = pattern[i];            // Store current number in a temp var
+    pattern[i] = insert;          // Insert the shifted number into the pattern
     insert = temp;                 // Prepare the temp number to be inserted on next loop
   }
 }
 
 /*
  * Function: resSort
- * This function accepts a resevoir sampling array, a lower bound, and an
+ * This function accepts a reservoir sampling array, a lower bound, and an
  * upper bound. Generates a random number between the lower and upper bound 
- * and performs a single resevoir sample. Returns a post processed resevoir 
+ * and performs a single reservoir sample. Returns a post processed reservoir 
  * sampling array and new lower and upper bounds.
  * 
- * Resevoir sampling is effective for speed when:
+ * reservoir sampling is effective for speed when:
  *  - Attempting to find a unique number.
  *  - The number of unique values is large.
  * 
  * In a traditional loop to check each previous number, we can be checking up 
  * to n^2 numbers for each number, with no guarantee of a unique value. In 
- * resevoir sampling, no matter how many unique numbers there are, a generation 
- * of a unique number in resevoir sampling is a single array index check with 
+ * reservoir sampling, no matter how many unique numbers there are, a generation 
+ * of a unique number in reservoir sampling is a single array index check with 
  * a guaranteed unique value.
  * 
  * Time complexity of:
  *   - Traditional sort - O(n^2)
- *   - Resevoir sampling - O(n + n/2) = O(n)
+ *   - Reservoir sampling - O(n + n/2) = O(n)
  * Space complexity of:
  *   - Traditional sort - O(n)
- *   - Resevoir sampling - O(2n) = O(n)
+ *   - Reservoir sampling - O(2n) = O(n)
  * 
- * However, resevoir sampling, by nature, does not create duplicate numbers. 
+ * However, reservoir sampling, by nature, does not create duplicate numbers. 
  * This method cannot be used for generating an amount of numbers greater than 
  * the number of unique numbers.
  * 
- * In our all numbers neighbors unique example, this method is used whenever 
- * it is applicable due to its speed.
+ * In our quest to insert dummy arrays into our unique solution, we will have to
+ * perform other methods. However, this significantly speeds up the unique
+ * generation portion.
  */
-byte resSort(byte arr[numSolution], byte *upper, byte *lower){
-  int pos = random(*lower, (*upper)+1);     // Randomly select an index of a number to pull for resevoir sampling
-  int num = arr[pos];                       // Store that number
-  if(arr[pos-(*lower)] < arr[(*upper)-pos]) // If that number is closer to the left side of the resevoir sampling array...
-    shiftOutRight(arr, lower, pos);         // Shift resevoir sampling array right
+long resSort(long arr[], long pos, long *upper, long *lower){
+  long num = arr[pos];                      // Store that number
+  if(arr[pos-(*lower)] < arr[(*upper)-pos]) // If that number is closer to the left side of the reservoir sampling array...
+    shiftOutRight(arr, lower, pos);         // Shift reservoir sampling array right
   else 
-    shiftOutLeft(arr, upper, pos);          // Otherwise, shift resevoir sampling array left
-  return num;                               // Return the number shifted out of the resevoir sampling array
+    shiftOutLeft(arr, upper, pos);          // Otherwise, shift reservoir sampling array left
+  return num;                               // Return the number shifted out of the reservoir sampling array
 }
 
 /*
- * Function: generatePattern 
- * This function generates a random all numbers, neighbors unique pattern.
- * It utilizes resevoir sampling to ensure all unique numbers are present
- * in the pattern. Afterwards, it generates random numbers from 0 to 
- * numSolution-1 and attempts to insert them into a random location in the
- * pattern, following the unique neighbor rule. It does this until the
- * desired pattern length has been reached.
+ * Function: nCrScrambler
+ * Accepts the desires number of ones, length of the array,
+ * and number of iterations to perform in the array. Outputs an
+ * array of ones after performing iterations. This routine is
+ * capable of iterating through every single possible nCr combo
+ * possible for the provided parameters.
  */
-
-void generatePattern(){
-  int resArr[combos];         // Stores the pattern data for resevoir sampling
-  for(int i=0; i<combos; i++) // For each index in the resevoir sampling array...
-    resArr[i] = i;             // Initialize the array with every unique number
-  int resLower = 3;           // Lower bound for resevoir sampling
-  int resUpper = combos-1;    // Upper bound for resevoir sampling
-  int numToGo = numRow;       // Number of numbers left to generate for pattern
-
-  /*********************************************************/
-  /***************\PERFORM RESEVOIR SAMPLING/***************/
-  /*********************************************************/
-  for(int i=0; i<numSolution; i++){                     // For each unique number...
-    if(DEBUG)
-      debug(0, resArr, resUpper, resLower);
-    solution[i] = resSort(resArr, &resUpper, &resLower); // Perform a resevoir sample and store the selected number
-    numToGo--;                                           // Denote one less number left to generate
+long nCrScrambler(byte ones, byte arrLength, long iterations){
+  /*******************************************************/
+  /*******\DETERMINE HOW MANY PLACES TO SHIFT ONES/*******/
+  /*******************************************************/
+  byte shifts[ones]; // Stores the number of shifts to perform
+  for(byte i=0; i<ones; i++){
+    shifts[i] = 0;
   }
-  while(numToGo){                                        // If we still have numbers to generate...
-    int randNum = random(3, combos);                    // Generate a random number from 3 to combos - 1
-    int upperLimit = numRow - numToGo;                  // Stores index of the end of the generated array
-    int pos = random(0, upperLimit);                    // Generate a random position within the bounds of generated numbers
-    bool flag_inserted = false;                          // Flag checks if number has been inserted into pattern
-    if(DEBUG)
-      debug(1, randNum, pos);
-    /********************************************************/
-    /*******\ALL INSERTION NICHE CASES AND CONDITIONS/*******/
-    /********************************************************/
-    while(!flag_inserted){                                     // While the number has not been inserted into the pattern...
-      if(pos == upperLimit - 1 && randNum != solution[pos]){   // If the new position is at the final generated number and is a valid insertion...
-        shiftInRight(randNum, pos+1, pos+1);                   // Insert number at the end
-        flag_inserted = true;
-      }
-      else if(pos > upperLimit - 1 && randNum != solution[0]){ // If the new position is outside the bounds of generated numbers and can be inserted at the beginning...
-        shiftInRight(randNum, 0, upperLimit);                  // Insert number at beginning
-        flag_inserted = true;
-      }
-      else if(pos > upperLimit && randNum == solution[0]){     // Otherwise, if the new position is outside the bounds of generated numbers and the first number is an identical neighbor...
-        pos = 1;                                               // Move the position to +1 after the beginning  
-      }
-      /*******************************************************/
-      /*******\STANDARD INSERTION CASES AND CONDITIONS/*******/
-      /*******************************************************/
-      else if(randNum == solution[pos] || randNum == solution[pos+1]){ // If number has an identical neighbor...
-        pos += 2;                                                      // Increment the position to check the next pair of neighbors
-      }
-      else{                                                            // If number has unique neighbors...
-        shiftInRight(randNum, pos+1, upperLimit);                      // Insert the number between them
-        flag_inserted = true;
+  while(iterations > 0){                     // If we aren't out of iterations to make...
+    byte window = ones-1;                    // Start at the least significant 1
+    while(window > 0 && iterations > 0){     // While we haven't reached the last 1 in the array and have iterations left to make...
+      if(shifts[window] < shifts[window-1]){ // If this 1 has shifted less than the 1 on the left...
+        shifts[window]++;                    // Shift the 1
+        for(byte i=window+1; i<ones; i++){   // For each less significant 1...
+          shifts[i] = 0;                     // Send them back to the beginning
+        }
+        iterations--;                        // Denote an iteration taking place
+        window = ones-1;                     // Return to the least significant 1
+      } else{
+        window--;                            // Look at the next 1
       }
     }
-    numToGo--; // One less number to generate
+    if(iterations > 0){                      // If we aren't out of iterations to make...
+      if(shifts[0] != (arrLength - ones)){   // If there is space left to shift...
+        shifts[0]++;                         // Shift the most significant 1 to the left
+        for(byte i=1; i<ones; i++){          // For each less significant 1...
+          shifts[i] = 0;                     // Send them back to the beginning
+        }
+      }
+      iterations--;                          // Denote an iteration taking place
+    }
   }
-}
 
+  /*******************************************************/
+  /***********\CREATE AND RETURN SHIFTED ARRAY/***********/
+  /*******************************************************/
+  long result = 0;
+  for(byte i=0; i<ones; i++){ // For each 1 in the array...
+    long temp = 1;                // Set bit to 1
+    temp <<= (shifts[i]+(ones - 1 - i));      // Shift the 1 to the left by the calculated amount
+    result |= temp;              // Add the 1 to the accumulating result
+  }
+  return result;
+}
 /*
- * Function: errorCheck 
- * This function halts the code from executing during setup if
- * a setting is configured incorrectly. Provides serial print
- * out of the issue.
+ * Function: nCr
+ * Takes the globally defined number of ones and total array length. Calculates 
+ * the total number of combinations that can be made in the boolean array
+ * consisting of exactly the inputted number of ones.
+ * 
+ * The total number of unique combinations of a boolean array follows the nCr 
+ * combinations formula which is the following:
+ * 
+ *        n! / (k!(n - k)!)
+ *        
+ * Where n is the length of the array and k is the number of ones. However, we can
+ * further simplify this formula for computational speed by reducing the scope to
+ * analylizing only the amount of zeroes and ones. By extracting these two values,
+ * we can obtain a much faster formula:
+ * 
+ *        for(int i=0; i<k; i++){
+ *          combos = (r + 1 + i) / (i + 1);
+ *        }
+ * 
+ * Where r and k are the number of zeroes and ones and can be used interchangeably.
+ * The fastest speed will be obtained by making k the smallest value between the two.
  */
-void errorCheck(){
-  if(numRow < 3){
-    Serial.println("numRow must be greater than 3! Please change and reupload.");
-    while(true);
+long nCr(byte ones, byte arrLength){
+  float combos = 1;                   // Store combos. By default, combos = 1 when arrLength = ones.
+  byte r;
+  byte k;
+  if(arrLength - ones > ones){        // If there are more zeroes...
+    r = arrLength - ones;
+    k = ones;                         // Make k = ones
+  } else{                             // Otherwise...
+    r = ones;
+    k = arrLength - ones;             // Make k = zeroes
   }
-  if(numSolution < 2){
-    Serial.println("numSolution must be greater than 1! Please change and reupload.");
-    while(true);
+  
+  for(float i=0; i<k; i++){           // For each zero or one, whichever was smaller...
+    combos *= ((r + 1) + i) / (i+1);  // Perform a fractorial operation k times, where r is constant.
   }
-  if(numSolution > numRow){
-    Serial.println("numRow must be greater or equal to numSolution! Please change and reupload.");
-    while(true);
-  }
+  return (long)combos;                // Return the total combinations
 }
 
 /* 
@@ -332,146 +306,170 @@ void errorCheck(){
  * Takes the globally defined number of switches and number of
  * desired correct switches. Generates an array of correct switches
  * and an array of their light patterns.
+ * 
+ * To create a solution for all on, we can use the fact that XOR will always produce a 1 on an odd number of 1s.
+ * We will create a set of odd numbers between 1 and numRow. We will generate odd numbers, and store them as
+ * a number that, in boolean, represents the number of 1 bools that coorespond to the odd number generated. Store
+ * that occurence in count array. For each occurence there will be x
+ * 
+ * The total number of permutations of an array will be:
+ * 
+ *        n! / (k!(n - k)!)
+ *        
+ * Where n is the length of the array and k is the number of ones
  */
-void generateSolution(){
-  int lightCombos = (2^numLight) - 1; // Total number of possible light combinations
-  bool solutionSwitches[numSolution]; // Array of correct switches to turn on
-  int solutionLights[numSolution];    // Array of light patterns for correct switches
-  byte elimSwitches[numRow];       // Elimination sort array to track remaining switch indexes
-  bool countLights[lightCombos];      // Count array to track light pattern occurences in solution
-  for (int i=0; i<numRow; i++){    // For each possible switch...
-    elimSwitches[i] = i;              // Initialize elimination sort for selecting correct switches
+bool generateSolution(){
+  long nCrArr[arrSize];                                     // Temporary array to store nCr results
+  byte numOdds = (numSolution & 0x01) + (numSolution >> 1); // Number of odd numbers from 1 to arrSize
+  long combos[numOdds];                                     // Stores the total combinations of every odd number of ones within arrSize
+  byte countOdd[numOdds];                                   // Stores the total occurence of each odd number in the solution
+  byte numToGo = arrSize;                                   // Number of arrays left to generate during reservoir sampling
+  for(byte i=0; i<numOdds; i++){                   // For every odd amount of ones possible...
+    countOdd[i] = 0;                               // Initialize odd count occurences to 0. Necessary for repeat calls to function.
+    combos[i] = nCr((i << 1) | 0x01, numSolution); // Calculate the number of combinations possible for all ones within arrSize
   }
-  for(int i=0; i<lightCombos; i++){   // For each possible light pattern...
-    countLights[i] = 0;               // Initialize occurences to 0
+  for(byte i=0; i<arrSize; i++){    // For each array to generate...
+    countOdd[random(0, numOdds)]++; // Generate a random odd number within arrSize and increment its occurence
   }
-  for (int i=0; i<numSolution; i++){  // For each switch and light pattern solution...
-    do {
-      solutionSwitches[i] = random(0,numRow); // Generate a random index of a switch
-    }while(countSwitches[solutionSwitches[i]]);  // If the switch already exists in solution...
-    solutionLights[i] = random(1,lightCombos-1); // Generate a light pattern, but not all OFF or ON
-    do {
-      solutionLights[i] = random(1,lightCombos-1); // Generate another light pattern, but not all OFF or ON
-      if(!(getLightCount(solutionLights[i]) & 0x01)){ // If there are an even number of lights turned ON...
-        solutionLights[i]++; // Make that number odd
+  for(byte i=0; i<numOdds; i++){    // For each potential odd number...
+    long resArr[combos[i]];         // Stores the pattern data for reservoir sampling
+    long combosLeft = combos[i];    // Number of unique combinations remaining
+    long resLower = 0;              // Lower bound for reservoir sampling
+    long resUpper = combos[i]-1;    // Upper bound for reservoir sampling
+    for(long k=0; k<combos[i]; k++) // For each possible combination of selected odd number...
+      resArr[k] = k;                // Initialize each index in the reservoir sampling array with every unique number
+    for(byte j=0; j<countOdd[i]; j++){  // For each occurence of that odd number...
+      if(!combosLeft){                  // If we ran out of unique combos to make...
+        combosLeft = combos[i];         // Reinitialize unique combos remaining
+        resLower = 0;                   // Reinitialize lower bound for reservoir sampling
+        resUpper = combos[i]-1;         // Reinitialize upper bound for reservoir sampling
+        for(long k=0; k<combos[i]; k++) // For each possible combination of selected odd number...
+          resArr[k] = k;                // Initialize each index in the reservoir sampling array with every unique number
       }
-    }while(countLights[solutionLights[i]]); // If the light pattern already exists in solution...
+      long randCombo = random(resLower,resUpper+1);                                  // Generate a random number of iterations within the unique number of iterations left
+      randCombo = resSort(resArr, randCombo, &resUpper, &resLower);                  // Perform a reservoir sample to store and eliminate the number.
+      combosLeft--;                                                                  // Decrement the possible combinations by 1, since one was used and eliminated
+      nCrArr[arrSize-numToGo] = nCrScrambler((i << 1) | 0x0001, arrSize, randCombo); // Generate a valid array with the random interation value and store the array in the solution
+      numToGo--;
+    }
   }
+  // Scramble the order of these arrays up with another reservoir sampling
+  long resArr[arrSize];          // Stores each nCr result for reservoir sampling
+  long resLower = 0;             // Lower bound for reservoir sampling
+  long resUpper = arrSize-1;     // Upper bound for reservoir sampling
+  for(byte i=0; i<arrSize; i++){ // For each nCr result...
+    resArr[i] = nCrArr[i];       // Store that result in the reservoir sampling array
+  }
+  for(byte i=0; i<arrSize; i++){                                  // For each nCr result...
+    byte randCombo = random(resLower,resUpper+1);                 // Generate a unique position to grab a number from
+    nCrArr[i] = resSort(resArr, randCombo, &resUpper, &resLower); // Perform a reservoir sample to store and eliminate the number.
+    //Serial.println(nCrArr[i]);
+    for(byte j=0; j<numSolution; j++){
+      Serial.print(bitRead(nCrArr[i],j));
+      Serial.print(" ");
+    }
+    Serial.println();
+  }
+  // Transpose the array to get our numbers....
+  for(byte i=0; i<arrSize; i++){ // For each boolean val in the array
+    for(byte j=0; j<numSolution; j++){ // For each solution array
+      bitWrite(pattern[j], i, bitRead(nCrArr[i],j)); // Store the jth bool of the ith nCr array in the ith bool of the jth solution
+      Serial.print(bitRead(nCrArr[i],j));
+      Serial.print(" ");
+    }
+    Serial.println();
+  }
+  
+  // Determine which dummy switches cannot be allowed to generate
+  long dummyCombos = (0x00000001 << arrSize) - 1; // Total possible arrays
+  bool resCount[dummyCombos];                     // Stores every occurence of an array during reservoir sampling
+  long resDummy[dummyCombos];                     // Stores all possible unique dummy arrays that will not produce a solution
+  resLower = 1;                                   // Lower bound for reservoir sampling. Prefilter all 0's
+  resUpper = dummyCombos-2;                       // Upper bound for reservoir sampling. Prefilter all 1's
+  for(long i=0; i<dummyCombos; i++){ // For each possible array...
+    resCount[i] = 0;                 // Initialize array count occurences to 0. Necessary for repeat calls to function.
+    resDummy[i] = i;                 // Store that array for reservoir sampling
+  }
+  for(byte i=0; i<numSolution; i++){                     // For each correct array...
+    solution[i] = i;                                     // Initialize the positions of the solution arrays
+    resSort(resDummy, pattern[i], &resUpper, &resLower); // Perform a reservoir sample to eliminate the number.
+    resCount[pattern[i]] = 1;                            // Flag this number for being removed as a dummy option
+  }
+  for(byte i=1; i<numSolution; i++){                      // For each number of arrays in the solution to XOR, aside from all of them...
+    long wrongCombos = nCr(i, numSolution);               // Determine the number of times each array can be combined uniquely
+    for(byte j=0; j<wrongCombos; j++){                    // For the number times we can combine each array...
+      long wrongArray = 0x00000000;                       // Stores resulting wrong array
+      byte arraysToXOR = nCrScrambler(i, numSolution, j); // Determine the array combo to XOR
+      for(byte k=0; k<numSolution; k++){                  // For each array in the solution...
+        if(bitRead(arraysToXOR, k)){                      // If we need to XOR this array...
+          wrongArray ^= pattern[k];                       // XOR this array
+        }
+      }
+      if(!wrongArray){ // If we notice two duplicate arrays in the solution or an array of all 1s or 0s...
+        return 1;      // Return flag to retry, we made a bad solution...
+      }
+      if(!resCount[wrongArray]){                             // If this array was not already determined to be wrong...
+        resSort(resDummy, wrongArray, &resUpper, &resLower); // Perform a reservoir sample to eliminate the number.
+        resCount[wrongArray] = 1;                            // Flag this number for being removed as an option
+      }
+    }
+  }
+  // FINALLY, we can produce proper dummy arrays
+  for(byte i=0; i<numRow - numSolution; i++){                      // For the number of dummy arrays to produce...
+    byte patternUpper = i + numSolution;                           // Upper bound of the current pattern array
+    long randArr = random(resLower,resUpper+1);                    // Generate a random position to pull a dummy array from the dummy reservoir
+    long randPos = random(0,patternUpper+1);                       // Generate a random position in the pattern to place the dummy array
+    long dummy = resSort(resDummy, randArr, &resUpper, &resLower); // Perform a reservoir sample to generate a unique, valid dummy array
+    shiftInRight(dummy, randPos, patternUpper);                    // Insert the dummy into the pattern
+    // Update the position of the solution arrays
+    for(byte j=0; j<numSolution; j++){ // For each solution array...
+      if(solution[j] >= randPos){      // If the inserted dummy array shifted the current solution array over...
+        solution[j]++;                 // Update the position of the solution array
+      }
+    }
+  }
+  return 0;
 }
 
-/*
-EASY - All lights off when all switches off
--Seed RNG
--Store number of switches, numRow
--Store number of correct switches, numSolution
-
-GENERATE LIGHT PATTERN OF CORRECT SWITCHES
--Generate numSolution numbers from 1 to (2^numSolution)-2 (NOT 0 to (2^numSolution)-1, we dont want all on or all off)
--For each number...
- -Count number of true bits
-  -If number of true bits even...
-    -Flip bit number[loop index]
--Perform nxn matrix transpose, you now have light combo for each switch.
-
-HARD - Some lights on when all switches off
--Seed RNG
--Store number of switches, numSolution
--Generate a single number from 1 to (2^numSolution)-2 (NOT 0 to (2^numSolution)-1, we dont want all on or all off) to seed the initial state of the lights.
--Generate numSolution numbers from 1 to (2^numSolution)-2 (NOT 0 to (2^numSolution)-1, we dont want all on or all off)
--For each number...
-  -Get initial light state
-  -Count number of true bits
-  -If number of true bits even and light state false...
-   OR If number of true bits odd and light state true...
-   (XOR first bit of counter with light state, invert, set as condition)
-    -Flip bit number[loop index]
--Perform nxn matrix transpose, you now have light combo for each correct switch.
-
-GENERATE INCORRECT DUMMY SWITCHES
-------TODO
-
-Transposing an nxn boolean matrix
-
-[0,0], [0,1], ..., [0,n]
-[1,0]
-.
-.
-.
-[n,0], [n,1], ..., [n,n]
-
-left to right...
-[0,0] <> [n,n]
-[0,1] <> [n-1,n]
-[0,2] <> [n-2,n]
-.
-.
-.
-[0,n] <> [n-n,n] ([0,n])
-
-top to bottom...
-[0,0] <> [n,n]
-[1,0] <> [n,n-1]
-[2,0] <> [n,n-2]
-.
-.
-.
-[n,0] <> [n,n-n] ([n,0])
-
-01 02 03 04   16 15 14 13
-05 06 07 08   12 11 10 09
-09 10 11 12   08 07 06 05
-13 14 15 16   04 03 02 01
-
-Transpose each number, left to right, top to bottom, until (n^2)/2, rounded down, numbers are transposed.
-
-SHORTCUTS:
-boolean transpose: XOR both bools, if true, transpose.
-divide by 2 rounded down: shift least significant bit of number out
-
-To create a solution for all on, we can use the fact that XOR will always produce a 1 on an odd number of 1s.
-We will create a set of odd numbers between 1 and arrSize. We will generate odd numbers, and store them as
-a number that, in boolean, represents the number of 1 bools that coorespond to the odd number generated. Store
-that occurence in count array. For each occurence there will be x
--i=0; i<arrSize; i++...
-  randNum = random(1,arrSize+1) | 0x0001, random number within number of rows, ensure odd
-  countArr[randNum]++;
-  -j=1; j<randNum; j++...
-    -bit shifting to perform the operation 2^0 + 2^1 + ... + 2^j
-    odds[i] <<= 1, shift bit left
-    odds[i] |= 0x0001, set first bit to 1
-0 0 1 1 1
-0 0 1 1 1
-0 0 1 1 1
-0 0 0 0 1
-1 1 1 1 1
-
-x5,y3,r10  x4,y3,r4 x3,y3,r1
-0 0 1 1 1  0 1 1 1  1 1 1
-0 1 1 1 0  1 0 1 1
-0 1 1 0 1  1 1 0 1
-0 1 0 1 1  1 1 1 0
-1 0 0 1 1  
-1 0 1 0 1
-1 0 1 1 0
-1 1 0 0 1
-1 1 0 1 0
-1 1 1 0 0
-
-x4,y2,r6   x3,y2,r3
-0 0 1 1     0 1 1
-0 1 0 1     1 1 0
-1 0 0 1     1 0 1
-0 1 1 0    
-1 0 1 0
-1 1 0 0
- */
- 
+void printPuzzle(){
+  Serial.println("The arrays generated, top to bottom, are...");
+  Serial.print("  ,");
+  for(byte i=0; i<arrSize; i++){
+    Serial.print("___");
+  }
+  Serial.println();
+  for(byte i=0; i<numRow; i++){
+    if(i < 10){
+      Serial.print("0");
+    }
+    Serial.print(i);
+    Serial.print("|");
+    for(byte j=0; j<arrSize; j++){
+      Serial.print(" ");
+      Serial.print(bitRead(pattern[i],j));
+      Serial.print(" ");
+    }
+    Serial.println();
+  }
+  Serial.print("The solution arrays are at indexes: ");
+  for(byte i=0; i<numSolution; i++){ // For each solution array..
+    Serial.print(solution[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+}
 void setup() {
-  // put your setup code here, to run once:
-
+  Serial.begin(19200);
+  Serial.println();
+  randomSeed(analogRead(A0));          // Use noise fluxuations from the A0 pin to seed the RNG
+  bool flag = generateSolution();
+  while(flag){
+    //Serial.println("I made a bad solution let's try again...");
+    //flag = generateSolution();
+  }
+  // Print our solution
+  printPuzzle();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-
 }
