@@ -280,29 +280,35 @@ int nCrScrambler(byte ones, byte arrLength, int iterations){
  * analylizing only the amount of zeroes and ones. By extracting these two values,
  * we can obtain a much faster formula:
  * 
- *        for(int i=0; i<k; i++){
- *          combos = (r + 1 + i) / (i + 1);
+ *        for(int i=i; i<=k; i++){ 
+ *          combos *= r + i;  
+ *          denominator *= i; 
  *        }
+ *        combos /= denominator;
  * 
  * Where r and k are the number of zeroes and ones and can be used interchangeably.
  * The fastest speed will be obtained by making k the smallest value between the two.
  */
 int nCr(byte ones, byte arrLength){
-  float combos = 1;                   // Store combos. By default, combos = 1 when arrLength = ones.
+  int combos = 1;                // Store combos. By default, combos = 1 when arrLength = ones.
+  int denominator = 1;           // Store denominator which stores the fractorial to divide    
   byte r;
   byte k;
-  if(arrLength - ones > ones){        // If there are more zeroes...
-    r = arrLength - ones;
-    k = ones;                         // Make k = ones
-  } else{                             // Otherwise...
-    r = ones;
-    k = arrLength - ones;             // Make k = zeroes
-  }
   
-  for(float i=0; i<k; i++){           // For each zero or one, whichever was smaller...
-    combos *= ((r + 1) + i) / (i+1);  // Perform a fractorial operation k times, where r is constant.
+  if(arrLength - ones > ones){   // If there are more zeroes...
+    r = arrLength - ones;
+    k = ones;                    // Make k = ones
+  } else{                        // Otherwise...
+    r = ones;
+    k = arrLength - ones;        // Make k = zeroes
   }
-  return (int)combos;                // Return the total combinations
+  for(int i=1; i<=k; i++){       // For each zero or one, whichever was smaller...
+    combos *= r + i;             // Perform a fractorial operation k times, where r is constant
+    denominator *= i;            // Perform a fractoral operation
+  }
+  combos = combos / denominator; // Divide to produce the total combinations
+  
+  return combos;                 // Return the total combinations
 }
 
 /* 
@@ -333,6 +339,104 @@ bool isSolutionValid(int arr[], byte arrLength){
     }
   }
   return 1;            // Return flag to continue, solution is valid
+}
+
+/* 
+ * Function: generateChunk
+ * Takes the globally defined number of switches and number of
+ * desired correct switches. Generates an array of correct switches
+ * and an array of their light patterns.
+ * 
+ * To create a solution for all on, we can use the fact that XOR will always produce a 1 on an odd number of 1s.
+ * We will create a set of odd numbers between 1 and numRow. We will generate odd numbers, and store them as
+ * a number that, in boolean, represents the number of 1 bools that coorespond to the odd number generated. Store
+ * that occurence in count array. For each occurence there will be x
+ * 
+ * The total number of permutations of an array will be:
+ * 
+ *        n! / (k!(n - k)!)
+ *        
+ * Where n is the length of the array and k is the number of ones
+ * 
+ * max 8x8x8 arr, split into array chunks
+ * arrSize, number of booleans, rows of initial program, uniquely find each combo of 8 as well as remainder
+ * numSolution, cols of initial program, find the first 8 odd, then every proceeding combination MUST BE EVEN. perhaps a bool toggle?
+ */
+byte generateChunk(byte solutionBytes, byte arrLength, bool genOdds = 0){
+  byte chunk[8];                                     // The array to return with the processed solution
+  int nCrArr[arrLength];                             // Temporary array to store nCr results
+  byte numOnes = (solutionBytes >> 1) + 1;           // Initialize number of ones to even occurences
+  if(genOdds){                                       // If this chunk should produce an odd number of ones...
+    numOnes += (solutionBytes & 0x01) - 1;           // Adjust the number of ones to accomodate the number of odd occurences
+  }
+  byte countOnes[numOnes];                            // Stores the total occurence of each odd/even number in the solution
+  int combos[numOnes];                               // Stores the total combinations of every number of ones within arrLength  
+  byte numToGo = arrLength;                          // Number of arrays left to generate during reservoir sampling
+  for(byte i=0; i<numOnes; i++){                     // For every odd/even amount of ones possible...
+    countOnes[i] = 0;                                // Initialize count occurences to 0. Necessary for repeat calls to function.
+    if(genOdds){
+      combos[i] = nCr((i << 1) | 0x01, solutionBytes); // Calculate the number of odd combinations possible for all ones within arrLength
+    } else{
+      combos[i] = nCr(i+1, solutionBytes);
+    }
+  }
+  for(byte i=0; i<8; i++){     // For each array to generate...
+    countOnes[random(0, numOnes)]++; // Generate a random number of odd/even ones within arrLength and increment its occurence
+  }
+  for(byte i=0; i<numOnes; i++){     // For each potential odd/even number of ones...
+    int resArr[combos[i]];         // Stores the pattern data for reservoir sampling
+    int combosLeft = combos[i];    // Number of unique combinations remaining
+    int resLower = 0;              // Lower bound for reservoir sampling
+    int resUpper = combos[i]-1;    // Upper bound for reservoir sampling
+    for(byte k=0; k<combos[i]; k++) // For each possible combination of selected odd number...
+      resArr[k] = k;                // Initialize each index in the reservoir sampling array with every unique number
+    for(byte j=0; j<countOnes[i]; j++){  // For each occurence of that odd number...
+      if(!combosLeft){                  // If we ran out of unique combos to make...
+        combosLeft = combos[i];         // Reinitialize unique combos remaining
+        resLower = 0;                   // Reinitialize lower bound for reservoir sampling
+        resUpper = combos[i]-1;         // Reinitialize upper bound for reservoir sampling
+        for(int k=0; k<combos[i]; k++) // For each possible combination of selected odd number...
+          resArr[k] = k;                // Initialize each index in the reservoir sampling array with every unique number
+      }
+      int randCombo = random(resLower,resUpper+1);                                  // Generate a random number of iterations within the unique number of iterations left
+      //Serial.print("Iterations chosen:");
+      //Serial.print(randCombo);
+      randCombo = resSort(resArr, randCombo, &resUpper, &resLower);                  // Perform a reservoir sample to store and eliminate the number.
+      combosLeft--;                                                                  // Decrement the possible combinations by 1, since one was used and eliminated
+      //Serial.print(" Result for ");
+      //Serial.print((i << 1) | 0x0001);
+      //Serial.print("ones:");
+      if(genOdds){
+        nCrArr[arrLength-numToGo] = nCrScrambler((i << 1) | 0x0001, solutionBytes, randCombo); // Generate a valid odd array with the random interation value and store the array in the solution
+      } else{
+        nCrArr[arrLength-numToGo] = nCrScrambler(i + 1, solutionBytes, randCombo); // Generate a valid even array with the random interation value and store the array in the solution
+      }
+      numToGo--;
+    }
+  }
+  // Scramble the order of these arrays up with another reservoir sampling
+  int resArr[arrLength];        // Stores each nCr result for reservoir sampling
+  int resLower = 0;             // Lower bound for reservoir sampling
+  int resUpper = arrLength-1;     // Upper bound for reservoir sampling
+  for(byte i=0; i<arrLength; i++){ // For each nCr result...
+    resArr[i] = nCrArr[i];       // Store that result in the reservoir sampling array
+  }
+  for(byte i=0; i<arrLength; i++){                                  // For each nCr result...
+    int randCombo = random(resLower,resUpper+1);                 // Generate a unique position to grab a number from
+    //for(int j=0; j<numSolution; j++){
+    //  Serial.print(bitRead(nCrArr[i],j));
+    //  Serial.print(" ");
+    //}
+    nCrArr[i] = resSort(resArr, randCombo, &resUpper, &resLower); // Perform a reservoir sample to store and eliminate the number.
+    //Serial.println();
+  }
+  //Serial.println();
+  // Transpose the array to get our numbers....
+  for(byte i=0; i<arrLength; i++){ // For each boolean val in the array
+    for(byte j=0; j<solutionBytes; j++){ // For each solution array
+      bitWrite(chunk[j], i, bitRead(nCrArr[i],j)); // Store the jth bool of the ith nCr array in the ith bool of the jth solution
+    }
+  }
 }
 
 /* 
@@ -431,7 +535,7 @@ bool generateSolution(){
     return 1;
   }
   Serial.println("Verified solution");
-  delay(500);
+  //delay(500);
   // Determine which dummy switches cannot be allowed to generate
   int dummyCombos = pow(2,arrSize)-1; // Total possible arrays
   //Serial.print("dummyCombos:");
@@ -446,14 +550,14 @@ bool generateSolution(){
     resDummy[i] = i;                 // Store that array for reservoir sampling
   }
   Serial.println("Initialized reservoir sampling");
-  delay(500);
+  //delay(500);
   for(byte i=0; i<numSolution; i++){                      // For each correct array...
     solution[i] = i;                                     // Initialize the positions of the solution arrays
     resSort(resDummy, pattern[i], &resUpper, &resLower); // Perform a reservoir sample to eliminate the number.
     resCount[pattern[i]] = 1;                            // Flag this number for being removed as a dummy option
   }
   Serial.println("Eliminated correct arrays as choices");
-  delay(500);
+  //delay(500);
   for(byte i=1; i<numSolution; i++){                      // For each number of arrays in the solution to XOR, aside from all of them...
     int wrongCombos = nCr(i, numSolution);              // Determine the number of times each array can be combined uniquely
     for(int j=0; j<wrongCombos; j++){                    // For the number times we can combine each array...
@@ -518,7 +622,8 @@ void setup() {
   Serial.begin(19200);
   Serial.println();
   randomSeed(analogRead(A0));          // Use noise fluxuations from the A0 pin to seed the RNG
-  bool flag = generateSolution();
+  //bool flag = generateSolution();
+  pattern = generateChunk();
   while(flag){
     Serial.println("I made a bad solution let's try again...");
     flag = generateSolution();
