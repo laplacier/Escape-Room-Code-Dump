@@ -64,17 +64,19 @@
  *     extend to infinite numbers and lengths.
  */
 #define DEBUG false
-#define numSolution 12  // Number of arrays in the unique solution
-#define numRow      12  // Total number of arrays
-#define arrSize     20  // Total number of boolean vals in an array
+#define numSolution 16  // Number of arrays in the unique solution
+#define numRow      16  // Total number of arrays
+#define arrSize     16  // Total number of boolean vals in an array
 
-const byte lastRow = numRow % 8;                     // Amount of arrays to create in the last row chunk
-const byte lastCol = arrSize % 8;                    // Amount of bools to create in the last column chunk
-const int rowChunk = (numRow >> 3) + (lastRow > 0);  // (numRow/8) Determine how many rows of chunks to make
-const int colChunk = (arrSize >> 3) + (lastCol > 0); // (arrSize/8) Determine how many columns of chunks to create
-byte pattern[colChunk][rowChunk][8];                 // Stores valid pattern
-int solution[numSolution];                           // Stores the index of the solution arrays
-byte chunkPattern[8];                                // Stores the 8x8 bool chunk for each chunk generation
+const byte lastRow = numRow % 8;                      // Amount of arrays to create in the last row chunk
+const byte lastCol = arrSize % 8;                     // Amount of bools to create in the last column chunk
+const byte rowChunk = (numRow >> 3) + (lastRow > 0);  // (numRow/8) Determine how many rows of chunks to make
+const byte colChunk = (arrSize >> 3) + (lastCol > 0); // (arrSize/8) Determine how many columns of chunks to create
+byte pattern[rowChunk][colChunk][8];                  // Stores:  Valid pattern
+int solution[numSolution];                            //          Bool index location of the solution arrays
+byte chunkPattern[8];                                 //          The 8x8 bool chunk for each chunk generation
+bool dummyCount[colChunk][255];                       //          The valid and invalid dummy arrays that can be generated 
+
 
 /*
  * Function: shiftOutLeft
@@ -206,7 +208,7 @@ void shiftOutRight(int arr[], int *lower, int pos){
  * generation portion.
  */
 int resSort(int arr[], int pos, int *upper, int *lower){
-  int num = arr[pos];                      // Store that number
+  int num = arr[pos];                       // Store that number
   if(arr[pos-(*lower)] < arr[(*upper)-pos]) // If that number is closer to the left side of the reservoir sampling array...
     shiftOutRight(arr, lower, pos);         // Shift reservoir sampling array right
   else 
@@ -222,7 +224,7 @@ int resSort(int arr[], int pos, int *upper, int *lower){
  * capable of iterating through every single possible nCr combo
  * possible for the provided parameters.
  */
-byte nCrScrambler(int ones, int arrLength, int iterations){
+unsigned long nCrScrambler(int ones, int arrLength, unsigned long iterations){
   /*******************************************************/
   /*******\DETERMINE HOW MANY PLACES TO SHIFT ONES/*******/
   /*******************************************************/
@@ -258,20 +260,12 @@ byte nCrScrambler(int ones, int arrLength, int iterations){
   /*******************************************************/
   /***********\CREATE AND RETURN SHIFTED ARRAY/***********/
   /*******************************************************/
-  byte result = 0;
-  for(byte i=0; i<ones; i++){ // For each 1 in the array...
-    Serial.print("[");
-    Serial.print(shifts[i]);
-    Serial.print("] ");
-    byte temp = 1;                // Set bit to 1
+  unsigned long result = 0;
+  for(int i=0; i<ones; i++){ // For each 1 in the array...
+    unsigned long temp = 1;                // Set bit to 1
     temp <<= (shifts[i]+(ones - 1 - i));      // Shift the 1 to the left by the calculated amount
     result |= temp;              // Add the 1 to the accumulating result
   }
-  //for(int j=arrLength-1; j>=0; j--){
-  //  Serial.print(bitRead(result,j));
-  //  Serial.print(" ");
-  //}
-  Serial.println();
   return result;
 }
 
@@ -300,9 +294,9 @@ byte nCrScrambler(int ones, int arrLength, int iterations){
  * Where r and k are the number of zeroes and ones and can be used interchangeably.
  * The fastest speed will be obtained by making k the smallest value between the two.
  */
-byte nCr(byte ones, byte arrLength){
-  byte combos = 1;      // Store combos. By default, combos = 1 when arrLength = ones.
-  byte denominator = 1; // Store denominator which stores the fractorial to divide    
+unsigned long nCr(byte ones, byte arrLength){
+  unsigned long combos = 1;      // Store combos. By default, combos = 1 when arrLength = ones.
+  unsigned long denominator = 1; // Store denominator which stores the fractorial to divide    
   byte r;               // The largest amount between zeroes and ones
   byte k;               // The smallest amount between zeroes and ones
 
@@ -317,7 +311,7 @@ byte nCr(byte ones, byte arrLength){
     r = ones;
     k = arrLength - ones;        // Make k = zeroes
   }
-  for(byte i=1; i<=k; i++){       // For each zero or one, whichever was smaller...
+  for(int i=1; i<=k; i++){       // For each zero or one, whichever was smaller...
     combos *= r + i;             // Perform a fractorial operation k times, where r is constant
     denominator *= i;            // Perform a fractoral operation
   }
@@ -357,6 +351,53 @@ bool isSolutionValid(byte arr[], byte arrLength){
 }
 
 /* 
+ * Function: findDummies
+ * This function accepts a row x col bool chunk and determines which
+ * byte arrays to avoid using when generating dummy byte arrays.
+ * 
+ * It XORs every potential combination against all ones to produce a
+ * byte array that will ruin the uniqueness of our solution. It then
+ * flags these byte arrays as invalid and modifies the global variable
+ * dummyCount[colChunk][255] which is a counting sort array keeping track
+ * of valid and invalid dummy array bytes for each row chunk in the column
+ * chunk's column.
+ * 
+ * pattern[i][j][k]
+ * XOR pattern[0][j][0] 0, 
+ */
+void findDummies(byte col){
+  // Determine which dummy switches cannot be allowed to generate
+  dummyCount[col][255] = 1;                              // (2^col - 1) is never a valid array byte
+  dummyCount[col][0] = 1;                                // 0 is never a valid array byte
+  for(int i=1; i<numSolution; i++){                      // For the number of unique array bytes in the solution to XOR...
+    Serial.print("Combining ");
+    Serial.print(i);
+    Serial.print(" array bytes..");
+    unsigned long wrongCombos = nCr(i, numSolution);     // Determine the number of times each array byte can be combined uniquely
+    for(unsigned long j=0; j<wrongCombos; j++){          // For each unique array byte combo of i array bytes...
+      Serial.print(.);
+      unsigned long arraysToXOR = nCrScrambler(i, numSolution, j); // Determine the array bytes to XOR
+      byte wrongArray = 255;                             // Initialize wrong array byte
+      for(byte k=0; k<rowChunk; k++){                    // For each row chunk of array bytes in the solution to XOR...
+        byte row = 8;                                    // Iterate through all 8 array bytes in the row chunk
+        if(k == rowChunk - 1 && lastRow){                // But if we are iterating through the last row chunk and it isn't full...
+          row = lastRow;                                 // Only iterate through the array bytes present in the last row chunk
+        }
+        for(byte m=0; m<row; m++){                             // For each solution array byte in the row chunk in the same column...
+          int boolSelector = (k << 3) + m;                     // Calculate the index of the array byte
+          boolSelector = (arraysToXOR >> boolSelector) & 0x01; // Determine if we need to XOR this array byte (is the bool 1?)
+          if(boolSelector){                                    // If we need to XOR this array byte...
+            wrongArray ^= pattern[k][col][m];                  // XOR this array byte to produce a dummy that would ruin a unique solution
+          }
+        }
+      }
+      dummyCount[col][wrongArray] = 1;                 // Flag the generated array byte as a dummy to avoid
+    }
+    Serial.println();
+  }
+}
+
+/* 
  * Function: generateChunk
  * Takes the globally defined number of switches and number of
  * desired correct switches. Generates an array of correct switches
@@ -380,100 +421,74 @@ bool generateChunk(byte row, byte col, bool genOdds = 0){
   int nCrArr[8];             // Temporary array to store nCr results
   byte numOnes = (row >> 1); // (row/2 rounded down) Initialize number of ones to even occurences
   if(genOdds){               // If this chunk should produce an odd number of ones...
-    Serial.print("Odd nums: ");
     numOnes += (row & 0x01); // (row/2 returning the rounded num) Adjust the number of ones to accomodate the number of odd occurences
-  } else{
-    Serial.print("Even nums: ");
   }
-  for(byte i=0; i<8; i++){ // For each array...
-    chunkPattern[i] = 0;   // Zero out the array
+  for(byte i=0; i<8; i++){   // For each array...
+    chunkPattern[i] = 0;     // Zero out the array
   }
   if(!numOnes){              // If we can't generate any ones...
     return 0;                // Do not execute tasks or flag for a regeneration
   }
-  Serial.print("numOnes:");
-  Serial.println(numOnes);
-  byte countOnes[numOnes];                           // Stores the total occurence of each odd/even number in the solution
-  int combos[numOnes];                               // Stores the total combinations for each valid number of ones within the number of columns
-  byte numToGo = col;                                // Number of arrays left to generate during reservoir sampling
-  for(byte i=0; i<numOnes; i++){                     // For every odd/even amount of ones possible...
-    countOnes[i] = 0;                                // Initialize count occurences to 0. Necessary for repeat calls to function.
-    if(genOdds){
-      Serial.print((i << 1) | 0x01);
+  byte countOnes[numOnes];                   // Stores the total occurence of each odd/even number in the solution
+  byte combos[numOnes];                       // Stores the total combinations for each valid number of ones within the number of columns
+  byte numToGo = col;                        // Number of arrays left to generate during reservoir sampling
+  for(byte i=0; i<numOnes; i++){             // For every odd/even amount of ones possible...
+    countOnes[i] = 0;                        // Initialize count occurences to 0. Necessary for repeat calls to function.
+    if(genOdds){                             // If we're generating an odd array...
       combos[i] = nCr((i << 1) | 0x01, row); // (2*i)+1 Calculate the number of odd combinations possible for all ones within the number of pre-transposed rows
-    } else{
-      Serial.print((i+1) << 1);
-      combos[i] = nCr((i+1) << 1, row); // 2*(i+1) Calculate the number of even combinations possible for all ones within the number of pre-transposed rows
+    } else{                                  // Otherwise, we're generating an even array...
+      combos[i] = nCr((i+1) << 1, row);      // 2*(i+1) Calculate the number of even combinations possible for all ones within the number of pre-transposed rows
     }
-    Serial.print(" ");
   }
-  Serial.println();
   for(byte i=0; i<col; i++){     // For each array to generate...
     countOnes[random(0, numOnes)]++; // Generate a random number of odd/even ones within the number of columns and increment its occurence
   }
-  for(int i=0; i<numOnes; i++){     // For each potential odd/even number of ones...
-    //Serial.print("i=");
-    //Serial.print(i);
-    Serial.print(", Result for ");
-    Serial.print(countOnes[i]);
-    Serial.println(" occurences:");
-    int resArr[combos[i]];         // Stores the pattern data for reservoir sampling
-    int combosLeft = combos[i];    // Number of unique combinations remaining
-    int resLower = 0;              // Lower bound for reservoir sampling
-    int resUpper = combos[i]-1;    // Upper bound for reservoir sampling
-    for(byte k=0; k<combos[i]; k++) // For each possible combination of selected number of ones...
-      resArr[k] = k;                // Initialize each index in the reservoir sampling array with every unique number
-    for(byte j=0; j<countOnes[i]; j++){  // For each occurence of that odd number...
+  for(int i=0; i<numOnes; i++){         // For each potential odd/even number of ones...
+    int resArr[combos[i]];              // Initialize: Pattern data for reservoir sampling
+    byte combosLeft = combos[i];        //             Number of unique combinations remaining
+    int resLower = 0;                   //             Lower bound for reservoir sampling
+    int resUpper = combos[i]-1;         //             Upper bound for reservoir sampling
+    for(byte k=0; k<combos[i]; k++)     // For each possible combination of selected number of ones...
+      resArr[k] = k;                    // Initialize each index in the reservoir sampling array with every unique number
+    for(byte j=0; j<countOnes[i]; j++){ // For each occurence of that odd number...
       if(!combosLeft){                  // If we ran out of unique combos to make...
-        combosLeft = combos[i];         // Reinitialize unique combos remaining
-        resLower = 0;                   // Reinitialize lower bound for reservoir sampling
-        resUpper = combos[i]-1;         // Reinitialize upper bound for reservoir sampling
-        for(int k=0; k<combos[i]; k++) // For each possible combination of selected odd number...
-          resArr[k] = k;                // Initialize each index in the reservoir sampling array with every unique number
+        combosLeft = combos[i];         // Reinitialize: Unique combos remaining
+        resLower = 0;                   //               Lower bound for reservoir sampling
+        resUpper = combos[i]-1;         //               Upper bound for reservoir sampling
+        for(byte k=0; k<combos[i]; k++) //
+          resArr[k] = k;                //               Each index in the reservoir sampling array with every unique number
       }
-      int randCombo = random(resLower,resUpper+1);                                  // Generate a random number of iterations within the unique number of iterations left
-      //Serial.print("Lower:");
-      //Serial.print(resLower);
-      //Serial.print(" Upper:");
-      //Serial.print(resUpper);
-      //Serial.print(" Iterations chosen:");
-      //Serial.println(randCombo);
-      randCombo = resSort(resArr, randCombo, &resUpper, &resLower);                  // Perform a reservoir sample to store and eliminate the number.
-      combosLeft--;                                                                  // Decrement the possible combinations by 1, since one was used and eliminated
-      if(genOdds){
+      int randCombo = random(resLower,resUpper+1);                           // Generate a random number of iterations within the unique number of iterations left
+      randCombo = resSort(resArr, randCombo, &resUpper, &resLower);          // Perform a reservoir sample to store and eliminate the number.
+      combosLeft--;                                                          // Decrement the possible combinations by 1, since one was used and eliminated
+      if(genOdds){                                                           // If we're generating an odd array...
         nCrArr[col-numToGo] = nCrScrambler((i << 1) | 0x01, row, randCombo); // Generate a valid odd array with the random interation value and store the array in the solution
-      } else{
-        nCrArr[col-numToGo] = nCrScrambler((i+1) << 1, row, randCombo); // Generate a valid even array with the random interation value and store the array in the solution
+      } else{                                                                // Otherwise, we're generating an even array...
+        nCrArr[col-numToGo] = nCrScrambler((i+1) << 1, row, randCombo);      // Generate a valid even array with the random interation value and store the array in the solution
       }
-      numToGo--;
+      numToGo--;                                                             // Decrement the number of combos left to generate
     }
   }
 
   // Scramble the order of these arrays up with another reservoir sampling
-  int resArr[col];        // Stores each nCr result for reservoir sampling
-  int resLower = 0;             // Lower bound for reservoir sampling
-  int resUpper = col-1;     // Upper bound for reservoir sampling
+  int resArr[col];           // Stores each nCr result for reservoir sampling
+  int resLower = 0;          // Lower bound for reservoir sampling
+  int resUpper = col-1;      // Upper bound for reservoir sampling
   for(byte i=0; i<col; i++){ // For each nCr result...
-    resArr[i] = nCrArr[i];       // Store that result in the reservoir sampling array
+    resArr[i] = nCrArr[i];   // Store that result in the reservoir sampling array
   }
-  for(byte i=0; i<row; i++){                                  // For each nCr result...
-    int randCombo = random(resLower,resUpper+1);                 // Generate a unique position to grab a number from
-    //for(int j=0; j<col; j++){
-    //  Serial.print(bitRead(nCrArr[j],i));
-    //  Serial.print(" ");
-    //}
+  for(byte i=0; i<row; i++){                                      // For each nCr result...
+    int randCombo = random(resLower,resUpper+1);                  // Generate a unique position to grab a number from
     nCrArr[i] = resSort(resArr, randCombo, &resUpper, &resLower); // Perform a reservoir sample to store and eliminate the number.
-    //Serial.println();
   }
-  //Serial.println();
   // Transpose the array to get our numbers....
-  for(byte i=0; i<8; i++){                                  // For each boolean val in the array
-    for(byte j=0; j<8; j++){                                // For each array in the chunk
+  for(byte i=0; i<8; i++){                                  // For each column array byte in the chunk...
+    for(byte j=0; j<8; j++){                                // For each row array byte in the chunk...
       if(j<row && i<col){                                   // If a pattern was generated for this row and column...
         bitWrite(chunkPattern[j], i, bitRead(nCrArr[i],j)); // Store the jth bool of the ith nCr array in the ith bool of the jth solution
       }
-      else{                                                 // Otherwise...
-        bitWrite(chunkPattern[j], i,0);                     // Store the 0 in the ith bool of the jth solution
+      else{                                                 // Otherwise, theres no relevant data to store...
+        bitWrite(chunkPattern[j], i,0);                     // Store a placeholder 0 in the ith bool of the jth solution
       }
     }
   }
@@ -481,13 +496,6 @@ bool generateChunk(byte row, byte col, bool genOdds = 0){
   Serial.print(row);
   Serial.print("x");
   Serial.println(col);
-  //for(byte j=0; j<row; j++){
-  //  for(byte k=0; k<col; k++){
-  //    Serial.print(bitRead(chunkPattern[j],k));
-  //    Serial.print(" ");
-  //  }
-  //  Serial.println();
-  //}
 
   int transCombos;                                                 // Stores the total combinations for all valid combinations of ones of the transposed chunk
   for(byte i=0; i<numOnes; i++){                                   // For each possible combination of ones...
@@ -497,8 +505,39 @@ bool generateChunk(byte row, byte col, bool genOdds = 0){
       transCombos = nCr((i + 1) << 1,col);                         // 2*(i+1) Calculate the number of even combinations possible for all ones within the number of columns
     }
   }
-  Serial.print("transCombos:");
-  Serial.println(transCombos);
+
+  // Determine which dummy switches cannot be allowed to generate
+  const byte wrongCombos = (1 << col) - 1;        // (2^col - 1) Determine the maximum combinations of ones for the column size
+  bool dummyCounter[wrongCombos];                   // Stores a flag indicating every wrong array byte
+  for(byte i=0; i<wrongCombos; i++){
+    dummyCounter[i] = 0;
+  }
+  byte dummyCounterr = 0;
+  dummyCounter[wrongCombos] = 1;                    // (2^col - 1) is never a valid array byte
+  dummyCounter[0] = 1;                              // 0 is never a valid array byte
+  for(byte i=1; i<row; i++){                      // For each number of array bytes in the solution to XOR, aside from all of them...
+    byte wrongCombos = nCr(i, row);               // Determine the number of times each array byte can be combined uniquely
+    for(byte j=0; j<wrongCombos; j++){            // For each unique array byte combo of i array bytes...
+      byte wrongArray = wrongCombos;              // Initialize wrong array byte
+      byte arraysToXOR = nCrScrambler(i, row, j); // Determine the array bytes to XOR
+      for(byte k=0; k<row; k++){                  // For each array byte in the chunk...
+        if(bitRead(arraysToXOR, k)){              // If we need to XOR this array byte...
+          wrongArray ^= chunkPattern[k];          // XOR this array byte to produce a dummy that would ruin a unique solution
+        }
+      }
+      dummyCounter[wrongArray] = 1;                   // Flag the generated array byte as a dummy to avoid
+    }
+  }
+  //Serial.println("Dummies to use in this chunk...");
+  for(byte i=0; i<(1 << col) - 1; i++){
+    if(!dummyCounter[i]){
+      dummyCounterr++;
+      //Serial.println(i);
+    }
+  }
+  Serial.print("Found ");
+  Serial.print(dummyCounterr);
+  Serial.println(" valid dummy arrays.");
   //if(!isSolutionValid(chunkPattern, row) && transCombos >= col){ // If the solution has duplicates and it's possible to make them unique...
   //    return 1;                                                    // Bad solution, flag for a redo
   //}
@@ -568,6 +607,11 @@ bool generateChunk(byte row, byte col, bool genOdds = 0){
  * numSolution, cols of initial program, find the first 8 odd, then every proceeding combination MUST BE EVEN. perhaps a bool toggle?
  */
 bool generateSolution(){
+  Serial.print("Generating a boolean array of ");
+  Serial.print(rowChunk);
+  Serial.print(" row bytes and ");
+  Serial.print(colChunk);
+  Serial.println(" column bytes...");
   //Determine the number of chunks to produce and their location
   int correctToGo = numSolution; // Store the number of correct arrays to generate to count
   int correctRow = (numSolution >> 3) + (numSolution % 8 > 0); // Store the number of row chunks to generate to complete the correct arrays
@@ -575,7 +619,7 @@ bool generateSolution(){
   for(int i=0; i<numSolution; i++){ // For each solution array...
     solution[i] = i; // Initialize the index of each solution array
   }
-  for(int i=0; i<correctRow; i++){ // For each row chunk to create (vertical)...
+  for(byte i=0; i<correctRow; i++){ // For each row chunk to create (vertical)...
     byte rows = 8;
     if(!(correctToGo >> 3)){ // If we have less than 8 solutions to generate...
       rows = correctToGo; // Make the odds generated equal to the last bit of solution arrays
@@ -583,7 +627,7 @@ bool generateSolution(){
     if(i == correctRow - 1 && lastRow){ //If this is the last row chunk to create and we have an incomplete chunk to make...
       rows = lastRow; // Resize the row dimension of the chunk to the number of arrays in the last row
     }
-    for(int j=0; j<colChunk; j++){ // For each column chunk to create (horizontal)...
+    for(byte j=0; j<colChunk; j++){ // For each column chunk to create (horizontal)...
       byte columns = 8;
       if(j == colChunk - 1 && lastCol){ // If this is the last column chunk to create and we have an incomplete chunk to make...
         columns = lastCol;              // Resize the column dimension of the chunk to the amount of bools in the last column
@@ -599,28 +643,11 @@ bool generateSolution(){
         Serial.println("I made a bad chunk. Let's try again...");
         flag_redo = generateChunk(rows, columns, (i==0));
       }
-      Serial.print("Pattern[");;
-      Serial.print(i);
-      Serial.print("][");
-      Serial.print(j);
-      Serial.print("][");
       for(byte k=0; k<8; k++){
-        //Serial.print("[");
-        Serial.print(k);
-        Serial.println("]");
         pattern[i][j][k] = chunkPattern[k];
-        Serial.print(pattern[i][j][k]);
         for(byte m=0; m<8; m++){
-          n[m]++;
-          //Serial.print(bitRead(pattern[i][j][k],m));
-          //Serial.print(" ");
-          //Serial.print(i);
-          //Serial.print(j);
         }
-        //Serial.println(correctToGo);
       }
-      //printChunk(chunkPattern);
-      printPuzzle();
     }
     correctToGo -= rows; // Check off the number of correct array generated
   }
@@ -642,18 +669,24 @@ bool generateSolution(){
   return 0;
 }*/
 void printRowDivider(bool index = 0){
-  Serial.print("   |");         //Print a row chunk divider
-  for(int i=0; i<colChunk; i++){
-    byte colsToPrint = 8;
-    if(i == colChunk - 1 && lastCol){ // But if it's the last column and it isn't full...
-      colsToPrint = lastCol;      // Print only the remaining columns
+  Serial.print("   |");                // Print a row chunk divider
+  for(byte i=0; i<colChunk; i++){      // For each column chunk...
+    byte colsToPrint = 8;              // Default to 8 column byte dividers to print
+    if(i == colChunk - 1 && lastCol){  // But if it's the last column and it isn't full...
+      colsToPrint = lastCol;           // Print dividers for only the remaining column bytes
     }
-    for(int j=0; j<colsToPrint; j++){
-      Serial.print("-");
-      if(index)
-        Serial.print(j);
-      else
-        Serial.print("-");
+    for(byte j=0; j<colsToPrint; j++){
+      if(index){
+        if(j + (i << 3) < 10){         // Print the index of the array, with formatting up to 999
+          Serial.print("0");
+        }
+        if(j + (i << 3) < 100){
+          Serial.print("0");
+        }
+        Serial.print(j + (i << 3));
+      } else{
+        Serial.print("---");
+      }
       Serial.print("-");
     }
     Serial.print(" | ");
@@ -662,18 +695,17 @@ void printRowDivider(bool index = 0){
 }
 
 void printPuzzle(){
-  int n = 0;
   Serial.println("The arrays generated, top to bottom, are...");
-  printRowDivider();
-  printRowDivider(1);
-  printRowDivider();  
-  for(int i=0; i<rowChunk; i++){      // For each chunk of rows to print... (numRow%8)
-    byte rowsToPrint = 8;             // Default to 8 rows of arrays
-    if(i == rowChunk - 1 && lastRow){ // But if it's the last row and it isn't full...
-      rowsToPrint = lastRow;          // Print only the remaining rows
+  printRowDivider();  // Divider
+  printRowDivider(1); // Index line
+  printRowDivider();  // Divider
+  for(byte i=0; i<rowChunk; i++){                    // For each chunk of rows...
+    byte rowsToPrint = 8;                            // Default to 8 row byte arrays to print
+    if(i == rowChunk - 1 && lastRow){                // But if it's the last row and it isn't full...
+      rowsToPrint = lastRow;                         // Print only the remaining rows
     }
-    for(int j=0; j<8; j++){ // For each array in the chunk to print... (arrSize%8)
-      if(j + (i << 3) < 10){               // Print the index of the array, with formatting up to 999
+    for(byte j=0; j<rowsToPrint; j++){               // For each row byte array in the chunk to print...
+      if(j + (i << 3) < 10){                         // Print the index of the array, with formatting up to 999
         Serial.print("0");
       }
       if(j + (i << 3) < 100){
@@ -681,32 +713,24 @@ void printPuzzle(){
       }
       Serial.print(j + (i << 3));
       Serial.print("|");
-      for(int k=0; k<colChunk; k++){      // For each chunk of columns to print...
-        byte colsToPrint = 8;             // Default to 8 columns of bools
-        if(k == colChunk - 1 && lastCol){ // But if it's the last column and it isn't full...
-          colsToPrint = lastCol;          // Print only the remaining columns
+      for(byte k=0; k<colChunk; k++){                // For each chunk of columns...
+        byte colsToPrint = 8;                        // Default to 8 column byte arrays to print
+        if(k == colChunk - 1 && lastCol){            // But if it's the last column and it isn't full...
+          colsToPrint = lastCol;                     // Print only the remaining columns
         }
-        for(int m=0; m<8; m++){            // For each column in the chunk to print...
+        for(byte m=0; m<colsToPrint; m++){           // For each column byte array in the chunk to print...
           Serial.print(" ");
-          //Serial.print(i);
-          Serial.print(bitRead(pattern[i][k][j],m)); // Actual print of the bool
-          Serial.print(" ");
-          n++;
+          Serial.print(bitRead(pattern[i][k][j],m)); // Actual print of the bool value
+          Serial.print("  ");
         }
         Serial.print(" | ");
       }
       Serial.println();
     }
-    printRowDivider();
-    printRowDivider(1);
-    printRowDivider(); 
+    printRowDivider();  // Divider
+    printRowDivider(1); // Index line
+    printRowDivider();  // Divider
   }
-  Serial.print("The solution arrays are at indexes: ");
-  for(int i=0; i<numSolution; i++){ // For each solution array..
-    Serial.print(solution[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
 }
 
 void printChunk(byte chunk[8]){
@@ -723,7 +747,7 @@ void printChunk(byte chunk[8]){
     Serial.print(i);
     Serial.print("|");
     for(byte j=0; j<8; j++){
-      Serial.print(" ");
+      Serial.print("  ");
       Serial.print(bitRead(chunk[i],j));
       Serial.print(" ");
     }
@@ -735,18 +759,21 @@ void setup() {
   Serial.begin(19200);
   Serial.println();
   randomSeed(analogRead(A0));          // Use noise fluxuations from the A0 pin to seed the RNG
-  //bool flag = generateSolution();
-  generateSolution();
-  //generateChunk(1,8,false);
+  generateSolution();          // Create a valid solution for our predefined array size
   // Print our solution
-  //Serial.println(pattern[0][0][0]);
-  //printPuzzle();
-  //printChunk(pattern[0][0]);
-  //printChunk(pattern[0][1]);
-  //printChunk(pattern[0][2]);
-  //printChunk(pattern[1][0]);
-  //printChunk(pattern[1][1]);
-  //printChunk(pattern[1][2]);
+  printPuzzle();
+  Serial.print("The solution arrays are at indexes: ");
+  for(int i=0; i<numSolution; i++){ // For each solution array..
+    Serial.print(solution[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+  Serial.println("Finding valid dummies...");
+  findDummies(0);
+  for(int i=0; i<255; i++){ // For each array byte combo in col...
+    //if(!dummyCount[0][i])
+    Serial.println(dummyCount[0][i]);
+  }
 }
 
 void loop() {
