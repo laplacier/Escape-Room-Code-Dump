@@ -64,9 +64,9 @@
  *     extend to infinite numbers and lengths.
  */
 #define DEBUG false
-#define numSolution 16  // Number of arrays in the unique solution
-#define numRow      16  // Total number of arrays
-#define arrSize     16  // Total number of boolean vals in an array
+#define numSolution 13  // Number of arrays in the unique solution
+#define numRow      13  // Total number of arrays
+#define arrSize     13  // Total number of boolean vals in an array
 
 const byte lastRow = numRow % 8;                      // Amount of arrays to create in the last row chunk
 const byte lastCol = arrSize % 8;                     // Amount of bools to create in the last column chunk
@@ -375,7 +375,7 @@ void findDummies(byte col){
     Serial.print(" array bytes..");
     unsigned long wrongCombos = nCr(i, numSolution);     // Determine the number of times each array byte can be combined uniquely
     for(unsigned long j=0; j<wrongCombos; j++){          // For each unique array byte combo of i array bytes...
-      Serial.print(.);
+      Serial.print(".");
       unsigned long arraysToXOR = nCrScrambler(i, numSolution, j); // Determine the array bytes to XOR
       byte wrongArray = 255;                             // Initialize wrong array byte
       for(byte k=0; k<rowChunk; k++){                    // For each row chunk of array bytes in the solution to XOR...
