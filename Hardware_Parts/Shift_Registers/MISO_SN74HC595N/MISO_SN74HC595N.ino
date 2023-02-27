@@ -1,11 +1,12 @@
 /*
  * SN74HC595N DEMO
  * 
- * SIPO - Serial in, parallel out. The SN74HC595N accepts 1 serial
- * input byte and outputs each bit to 8 outputs in parallel
+ * SIPO - Serial in, parallel out. The SN74HC595N is a SIPO 
+ * register. It accepts 1 serial input byte and outputs each bit 
+ * to 8 outputs in parallel.
  * 
- * You have a lot of digital output connections to make, but
- * not enough pins on your microcontroller to connect them all.
+ * We have a lot of digital output connections to make, but
+ * not enough pins on our microcontroller to connect them all.
  * Rather than buying a more expensive microcontroller with more
  * pins, try adding some inexpensive SIPO registers!
  * 
@@ -18,7 +19,7 @@
  * -Analog data
  * -Communication protocols through a SIPO pin (I2C, SPI, etc)
  * 
- * You will need 3 IO pins to control any amount of SIPO
+ * We will need 3 IO pins to control any amount of SIPO
  * registers daisy chained together. The last SIPO register
  * in the chain will have nothing connected to pin 9.
  * 
@@ -47,7 +48,8 @@
  *       |_____|
  *      
  * by Adam Billingsley
- * created 7 Feb, 2023
+ * created  7 Feb, 2023
+ * modified 9 Feb, 2023
  */
 
 #define numSIPO    1 // Number of SIPO registers in daisy chain
@@ -97,7 +99,7 @@ void pulsePin(int pinName, int pulseTime){
  * written will be written to pin H of the last SIPO register in 
  * the chain.
  * 
- * If you had two SIPO registers daisy chained, with 0A denoting
+ * If we had two SIPO registers daisy chained, with 0A denoting
  * Pin A on the first SIPO register and 1A denoting Pin A on the
  * second SIPO register, the PHYSICAL order of pins being written
  * to would be the following:
@@ -109,7 +111,7 @@ void pulsePin(int pinName, int pulseTime){
  * in MSBFIRST order for ease of programming and readability.
  * 
  * Example:
- * Suppose you have two SIPO registers in a chain and you input the
+ * Suppose we have two SIPO registers in a chain and we input the
  * following...
  * 
  * byte data = {127,1}; // (b01111111,b00000001)

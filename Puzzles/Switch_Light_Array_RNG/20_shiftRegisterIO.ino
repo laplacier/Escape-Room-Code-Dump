@@ -1,31 +1,19 @@
 /*
- * SN74HC165N + SN74HC165N DEMO
+ * This program is designed for use with SN74HC165N  and SN74HC595N
+ * shift registers.
  * 
- * PISO - Parallel in, Serial out. The SN74HC165N is a PISO 
+ * PISO - Parallel in, Serial out. The SN74HC165N is a PISO
  * register. It accepts 8 inputs in parallel and outputs their 
- * states on one serial line.
+ * states on one shiftable pin.
  * SIPO - Serial in, parallel out. The SN74HC595N is a SIPO 
- * register. It accepts 1 serial input byte and outputs each bit 
- * to 8 outputs in parallel.
+ * register. It accepts 1 byte shifted in on one pin and outputs 
+ * each bit to 8 parallel outputs.
  * 
- * You have a lot of digital IO connections to make, but
- * not enough pins on your microcontroller to connect them all.
- * Rather than buying a more expensive microcontroller with more
- * pins, try adding some inexpensive PISO and MISO registers!
- * 
- * Use shift registers for:
- * -Expanding the number of IO pins available
- * -Inputs that need to read a HIGH and LOW state
- * 
- * Do NOT use shift registers for:
- * -IO pins with extremely tight timing requirements (us)
- * -Analog data
- * -Communication protocols through a shift register pin (I2C, SPI, etc)
- * 
- * You will need 5 IO pins to control any amount of PISO
- * and SIPO registers. The last PISO register in the chain 
- * will have nothing connected to pin 10, and the last SIPO
- * register will have nothing connected to pin 9.
+ * The last PISO register in the chain will 
+ * have nothing connected to pin 10, and the last SIPO register 
+ * will have nothing connected to pin 9.
+ * Each input pin of the PISO registers must be pulled high
+ * with a resistor (recommended values between 1k-10k)
  * 
  * PISO#0 __ __                         SIPO#0 __ __
  *       |  U  |                              |  U  |
@@ -50,38 +38,19 @@
  *      -|7  10|- to PISO#2 pin 9, etc...  H'-|7  10|-VCC
  *   GND-|8   9|- to PISO#0 pin 10        GND-|8   9|- to SIPO#2 pin 14, etc...
  *       |_____|                              |_____|
- *      
- * In this example, The states of the PISO registers are
- * pushed to as many SIPO registers as possible in 1 to 1
- * fashion. Pulling Pin A of PISO#0 HIGH will pull Pin A
- * of SIPO#0 HIGH. We also handle the case of mismatched
- * amounts of PISO and SIPO registers.
- * 
- * by Adam Billingsley
- * created 7 Feb, 2023
  */
-
-#define numPISO    1     // Number of PISO registers in daisy chain
-#define numSIPO    1     // Number of SIPO registers in daisy chain
-#define clockPin   7     // Pin 2 on all SN74HC165N and Pin 11 on all SN74HC595N
-#define loadPin    2     // Pin 1 on all SN74HC165N
-#define dataInPin  3     // Pin 9 on FIRST SN74HC165N
-#define latchPin   4     // Pin 12 on all SN74HC595N
-#define dataOutPin 6     // Pin 14 on FIRST SN74HC595N
-byte numMin;             // Minimum number of either PISO or SIPO registers
-byte inputData[numPISO]; // Stores PISO data
 
 /* 
- * Function: pulsePin
- * Accepts a digital output pin and a pulse time
- * Pulses a pin LOW for the specified pulse time
- * in microseconds.
+ * Function: isDataNew
+ * Checks all PISO register states, returns true
+ * when a change is detected.
  */
-void pulsePin(int pinName, int pulseTime){
-  digitalWrite(pinName, LOW);
-  delayMicroseconds(pulseTime);
-  digitalWrite(pinName, HIGH);
-  delayMicroseconds(pulseTime);
+bool isDataNew(){
+  for(int i=0; i<numPISO; i++){
+    if(inputData[i] != inputOld[i])
+      return true;
+  }
+  return false;
 }
 
 /* 
@@ -101,6 +70,19 @@ void printData(byte data, String regName, int regNum){
     Serial.print(" ");              // shift register in LSBFIRST order
   }
   Serial.println();
+}
+
+/* 
+ * Function: pulsePin
+ * Accepts a digital output pin and a pulse time
+ * Pulses a pin LOW for the specified pulse time
+ * in microseconds.
+ */
+void pulsePin(int pinName, int pulseTime){
+  digitalWrite(pinName, LOW);
+  delayMicroseconds(pulseTime);
+  digitalWrite(pinName, HIGH);
+  delayMicroseconds(pulseTime);
 }
 
 /* 
@@ -140,8 +122,6 @@ void readPISO(byte data[numPISO]){
       bitWrite(data[i], j, digitalRead(dataInPin)); // Write the current bit to the corresponding bit in the input variable
       pulsePin(clockPin, 5);                        // Pulse the clock to shift the next bit in from the PISO register
     }
-    const String namePISO = "PISO#";                // Create register name
-    printData(data[i], namePISO, i);                // Print the selected register byte
   }
 }
 
@@ -154,10 +134,10 @@ void readPISO(byte data[numPISO]){
  * written will be written to pin H of the last SIPO register in 
  * the chain.
  * 
- * If you had two SIPO registers daisy chained, with 0A denoting
+ * If you have two SIPO registers daisy chained, with 0A denoting
  * Pin A on the first SIPO register and 1A denoting Pin A on the
  * second SIPO register, the PHYSICAL order of pins being written
- * to would be the following:
+ * to will be the following:
  * 
  * Bit#: 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
  * Pin#: 1H 1G 1F 1E 1D 1C 1B 1A 0H 0G 0F 0E 0D 0C 0B 0A
@@ -167,7 +147,7 @@ void readPISO(byte data[numPISO]){
  * 
  * Example:
  * Suppose you have two SIPO registers in a chain and you input the
- * following...
+ * following bytes...
  * 
  * byte data = {127,1}; // (b01111111,b00000001)
  * 
@@ -178,51 +158,12 @@ void readPISO(byte data[numPISO]){
  */
 void sendSIPO(byte data[numSIPO]){
   for(int i=numSIPO-1; i>=0; i--){                    // For each SIPO register...
-    const String nameSIPO = "SIPO#";                  // Create register name
-    printData(data[i], nameSIPO, i);                  // Print expected output to serial
+    if(DEBUG){
+    }
     for(int j=7; j>=0; j--){                          // For each bit in the register...
        digitalWrite(dataOutPin, bitRead(data[i], j)); // Read the current bit of the input variable and write it to the SIPO data pin
        pulsePin(clockPin, 5);                         // Pulse the clock to shift the bit out to SIPO registers
     }
   }
   pulsePin(latchPin, 5);                              // Pulse the latch to allow new data to appear on SIPO registers
-}
-
-void setup() {
-  Serial.begin(19200);
-  Serial.println();
-  Serial.print("-----74HC165 + 74HC595 demo-----");
-  // Set all the pins of SN74HC165N
-  pinMode (loadPin, OUTPUT);
-  pinMode (dataInPin, INPUT);
-
-  // Set all the pins of SN74HC595N
-  pinMode(latchPin, OUTPUT);
-  pinMode(dataOutPin, OUTPUT);
-
-  // The clock pin is shared between ALL registers
-  pinMode (clockPin, OUTPUT);
-
-  // Store the LOWEST number of either shift register for logic safety later
-  if(numSIPO > numPISO){
-    numMin = numPISO;
-  } else{
-    numMin = numSIPO;
-  }
-}
-
-void loop() {
-  byte outputData[numSIPO];     // Byte array stores SIPO output data
-  for(int i=0; i<numSIPO; i++){ // For each byte in outputData...
-    outputData[i] = 0;          // Default output byte to 0
-  }
-  
-  Serial.println("Pin States: A B C D E F G H"); // Print header row in LSBFIRST order
-  readPISO(inputData);                           // Store and print the states of the PISO registers
-  for(int i=0; i<numMin; i++){                   // For each transferrable byte...
-    outputData[i] = inputData[i];                // Write PISO byte i to SIPO byte i
-  }
-  
-  sendSIPO(outputData);                          // Send output data to SIPO registers and print the data
-  delay(500);
 }
