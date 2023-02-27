@@ -72,9 +72,9 @@
 typedef unsigned char byte;                             // Arduino declaration of an unsigned char explicitly used as a number
 
 #define DEBUG false
-#define numSolution 8  // Number of arrays in the unique solution
-#define numRow      8  // Total number of arrays
-#define arrSize     8 // Total number of boolean vals in an array
+#define numSolution 10 // Number of arrays in the unique solution
+#define numRow      30 // Total number of arrays
+#define arrSize     30 // Total number of boolean vals in an array
 
 #define lastRow  (numRow%8)                    // Amount of arrays to create in the last row chunk
 #define lastCol  (arrSize%8)                   // Amount of bools to create in the last column chunk
@@ -82,8 +82,8 @@ typedef unsigned char byte;                             // Arduino declaration o
 #define colChunk ((arrSize>>3ULL)+(lastCol>0)) // (arrSize/8) Determine how many columns of chunks to create
 byte pattern[rowChunk][colChunk][8];           // Stores: Valid pattern
 int solution[numSolution];                     //       : Bool index location of the solution arrays
-byte chunkPattern[8];                          //       : 8x8 bool chunk for each chunk generation
-bool dummyCount[colChunk][256];                //       : Valid and invalid dummy arrays that can be generated 
+byte chunkPattern[12];                         //       : Bool chunk for each 8x8(normal) to 12x12(big) chunk generation
+bool dummyCount[colChunk][256];                //       : Valid and invalid dummy arrays that can be generated
 
 #define bitSet(a,b) ((a) |= (1ULL<<(b)))    // Set bit in position b to 1 in target byte a
 #define bitClear(a,b) ((a) &= ~(1ULL<<(b))) // Set bit in position b to 0 in target byte a
@@ -97,20 +97,15 @@ bool dummyCount[colChunk][256];                //       : Valid and invalid dumm
 #define DIVIDE_POW2U(n,m) ((n>>m)+(n&1ULL)) // Divide n by 2^m, rounded up
 
 // Function prototypes
-void generateSolution();
 void shiftOutLeft(int arr[], int* upper, int pos);
 void shiftOutRight(int arr[], int* lower, int pos);
 void shiftInRight(int insert, int pos, int upper);
 int resSort(int arr[], int pos, int* upper, int* lower);
-unsigned long nCrScrambler(int ones, int arrLength, unsigned long iterations);
-unsigned long nCr(byte ones, byte arrLength);
-bool isSolutionValid(byte arr[], byte arrLength);
-void findDummies(byte col);
-bool generateChunk(byte row, byte col, bool genOdds);
-void generateSolution();
+bool dummyChecker(unsigned long long val, int col, unsigned long long solutionArr[], unsigned long long maxNum);
+void generateBigChunk(int row, int col, bool genOdds);
 void printRowDivider(bool index);
 void printPuzzle();
-void printChunk(byte chunk[8]);
+void printChunk(byte chunk[12]);
 
 /*
  * Function: shiftOutLeft
@@ -250,479 +245,96 @@ int resSort(int arr[], int pos, int* upper, int* lower) {
     return num;                               // Return the number shifted out of the reservoir sampling array
 }
 
-/*
- * Function: nCrScrambler
- * Accepts the desires number of ones, length of the array,
- * and number of iterations to perform in the array. Outputs an
- * array of ones after performing iterations. This routine is
- * capable of iterating through every single possible nCr combo
- * possible for the provided parameters.
- */
-unsigned long nCrScrambler(int ones, int arrLength, unsigned long iterations) {
-    /*******************************************************/
-    /*******\DETERMINE HOW MANY PLACES TO SHIFT ONES/*******/
-    /*******************************************************/
-    int* shifts = (int*)calloc(ones, sizeof(int)); // Stores the number of shifts to perform
-
-    if (shifts == NULL) { // If we ran out of memory to calloc to shifts...
-        printf("Memory unable to be allocated to shifts in nCrScrambler.\n");
-        exit(0);          // Terminate with error
+unsigned long long bigRand(int col) {
+    unsigned long long randomNum = rand() %  2ULL;
+    for (int i = 0; i < col-1; i++) {
+        randomNum <<= 1ULL;
+        randomNum += rand() % 2ULL;
     }
 
-    for (int i = 0; i < ones; i++) {
-        shifts[i] = 0;
-    }
-    while (iterations > 0) {                     // If we aren't out of iterations to make...
-        int window = ones - 1;                    // Start at the least significant 1
-        while (window > 0 && iterations > 0) {     // While we haven't reached the last 1 in the array and have iterations left to make...
-            if (shifts[window] < shifts[window - 1]) { // If this 1 has shifted less than the 1 on the left...
-                shifts[window]++;                    // Shift the 1
-                for (int i = window + 1; i < ones; i++) {   // For each less significant 1...
-                    shifts[i] = 0;                     // Send them back to the beginning
-                }
-                iterations--;                        // Denote an iteration taking place
-                window = ones - 1;                     // Return to the least significant 1
-            }
-            else {
-                window--;                            // Look at the next 1
-            }
-        }
-        if (iterations > 0) {                      // If we aren't out of iterations to make...
-            if (shifts[0] != (arrLength - ones)) {   // If there is space left to shift...
-                shifts[0]++;                         // Shift the most significant 1 to the left
-                for (int i = 1; i < ones; i++) {          // For each less significant 1...
-                    shifts[i] = 0;                     // Send them back to the beginning
-                }
-            }
-            iterations--;                          // Denote an iteration taking place
-        }
-    }
-
-    /*******************************************************/
-    /***********\CREATE AND RETURN SHIFTED ARRAY/***********/
-    /*******************************************************/
-    unsigned long result = 0;
-    for (int i = 0; i < ones; i++) { // For each 1 in the array...
-        unsigned long temp = 1;                // Set bit to 1
-        temp <<= (shifts[i] + (ones - 1 - i));      // Shift the 1 to the left by the calculated amount
-        result |= temp;              // Add the 1 to the accumulating result
-    }
-    free(shifts); // Destroy the shifts array from memory
-    return result;
+    return randomNum;
 }
 
 /*
- * Function: nCr
- * Takes the globally defined number of ones and total array length. Calculates
- * the total number of combinations that can be made in the boolean array
- * consisting of exactly the inputted number of ones.
- *
- * The total number of unique combinations of a boolean array follows the nCr
- * combinations formula which is the following:
- *
- *        n! / (k!(n - k)!)
- *
- * Where n is the length of the array and k is the number of ones. However, we can
- * further simplify this formula for computational speed by reducing the scope to
- * analylizing only the amount of zeroes and ones. By extracting these two values,
- * we can obtain a much faster formula:
- *
- *        for(int i=i; i<=k; i++){
- *          combos *= r + i;
- *          denominator *= i;
- *        }
- *        combos /= denominator;
- *
- * Where r and k are the number of zeroes and ones and can be used interchangeably.
- * The fastest speed will be obtained by making k the smallest value between the two.
- */
-unsigned long nCr(byte ones, byte arrLength) {
-    unsigned long combos = 1;      // Store combos. By default, combos = 1 when arrLength = ones.
-    unsigned long denominator = 1; // Store denominator which stores the fractorial to divide    
-    byte r;               // The largest amount between zeroes and ones
-    byte k;               // The smallest amount between zeroes and ones
+* Function: dummyChecker
+* Checks a single row against an inputted array for uniqueness (not a duplicate of another row) and 
+* exclusiveness (cannot be involved in a solution). Returns true if conditions are met.
+*/
+bool dummyChecker(unsigned long long val, int col, unsigned long long solutionArr[], unsigned long long maxNum) {
 
-    if (ones > arrLength) { // If it is impossible to make a valid combination...
-        return 0;           // Return no combinations possible
-    }
-
-    if (arrLength - ones > ones) {   // If there are more zeroes...
-        r = arrLength - ones;
-        k = ones;                    // Make k = ones
-    }
-    else {                        // Otherwise...
-        r = ones;
-        k = arrLength - ones;        // Make k = zeroes
-    }
-    for (int i = 1; i <= k; i++) {       // For each zero or one, whichever was smaller...
-        combos *= r + i;             // Perform a fractorial operation k times, where r is constant
-        denominator *= i;            // Perform a fractoral operation
-    }
-    combos = combos / denominator; // Divide to produce the total combinations
-
-    return combos;                 // Return the total combinations
-}
-
-/*
- * Function: isSolutionValid
- * Takes a generated solution array and the array length as input.
- *
- * Determines if the solution produced reasonable arrays. The constraints are:
- *  - No two solution arrays are identical
- *  - No solution array consists of all zeroes or ones
- * We can determine this by performing an XOR of every switch. If 0 or max, one
- * of these conditions is true and we can flag the solution for additional bool
- * shuffling.
- */
-bool isSolutionValid(byte arr[], byte arrLength) {
-    for (byte i = 1; i < arrLength; i++) {                      // For each number of arrays in the solution to XOR, aside from all of them...
-        byte wrongCombos = nCr(i, arrLength);               // Determine the number of times each array can be combined uniquely
-        for (byte j = 0; j < wrongCombos; j++) {                  // For the number times we can combine each array...
-            byte wrongArray = 0;                              // Stores resulting wrong array
-            byte arraysToXOR = nCrScrambler(i, arrLength, j); // Determine the array combo to XOR
-            for (byte k = 0; k < arrLength; k++) {                  // For each array in the solution...
-                if (bitRead(arraysToXOR, k)) {                    // If we need to XOR this array...
-                    wrongArray ^= arr[k];                         // XOR this array
-                }
-            }
-            if (!wrongArray) { // If we notice two duplicate arrays in the solution or an array of all 1s or 0s...
-                return 0;      // Return flag to retry, we made a bad solution...
-            }
-        }
-    }
-    return 1;            // Return flag to continue, solution is valid
-}
-
-/*
- * Function: findDummies
- * This function accepts a row x col bool chunk and determines which
- * byte arrays to avoid using when generating dummy byte arrays.
- *
- * It XORs every potential combination against all ones to produce a
- * byte array that will ruin the uniqueness of our solution. It then
- * flags these byte arrays as invalid and modifies the global variable
- * dummyCount[colChunk][255] which is a counting sort array keeping track
- * of valid and invalid dummy array bytes for each row chunk in the column
- * chunk's column.
- *
- * pattern[i][j][k]
- * XOR pattern[0][j][0] 0,
- */
-void findDummies(byte col) {
+    unsigned long long maxVal = MULTIPLY_POW2(1, col) - 1; // Max value for column number of bits
     // Determine which dummy switches cannot be allowed to generate
-    dummyCount[col][255] = 1;                              // (2^col - 1) is never a valid array byte
-    dummyCount[col][0] = 1;                                // 0 is never a valid array byte
-    for (int i = 1; i < numSolution; i++) {                      // For the number of unique array bytes in the solution to XOR...
-        printf("Combining %d array bytes...", i);
-        unsigned long wrongCombos = nCr(i, numSolution);     // Determine the number of times each array byte can be combined uniquely
-        for (unsigned long j = 0; j < wrongCombos; j++) {          // For each unique array byte combo of i array bytes...
-            printf(".");
-            unsigned long arraysToXOR = nCrScrambler(i, numSolution, j); // Determine the array bytes to XOR
-            byte wrongArray = 255;                             // Initialize wrong array byte
-            for (byte k = 0; k < rowChunk; k++) {                    // For each row chunk of array bytes in the solution to XOR...
-                byte row = 8;                                    // Iterate through all 8 array bytes in the row chunk
-                if (k == rowChunk - 1 && lastRow) {                // But if we are iterating through the last row chunk and it isn't full...
-                    row = lastRow;                                 // Only iterate through the array bytes present in the last row chunk
+    printf("Checking %d for validity...", val);
+    for (unsigned long long i = 1; i < maxVal + 1; i++) { // For every possible combination of solution vals to compare (0-255)...
+        unsigned long long valXOR = val; // Store the inputted val to begin XOR
+        for (int j = 0; j < col; j++) { // For each val in the solution array...(0-7)
+            if (bitRead(i, j)) { // If we need to XOR the solution val...(arr[0]-arr[7])
+                if (solutionArr[j] == val) {
+                    printf("NO\n");
+                    return 0;
                 }
-                for (byte m = 0; m < row; m++) {                             // For each solution array byte in the row chunk in the same column...
-                    int boolSelector = (k << 3) + m;                     // ((k * 8) + m) Calculate the index of the array byte
-                    boolSelector = bitRead(arraysToXOR, boolSelector);    // Determine if we need to XOR this array byte (is the bool 1?)
-                    if (boolSelector) {                                    // If we need to XOR this array byte...
-                        wrongArray ^= pattern[k][col][m];                  // XOR this array byte to produce a dummy that would ruin a unique solution
-                    }
+                valXOR ^= solutionArr[j]; // XOR the inputted val with the solution val
+                if (valXOR == maxNum) { // If we found a failing combination...
+                    printf("NO\n");
+                    return 0; // Immediately exit
                 }
             }
-            dummyCount[col][wrongArray] = 1;                 // Flag the generated array byte as a dummy to avoid
+        }
+    }
+    printf("OK\n");
+    return 1;
+}
+
+/*
+* Function: generateBigChunk()
+* 
+* Accepts a row dimension, column dimension, and a boolean to determine whether to generate an
+* even or odd array. All rows will be unique and the numSolution rows that uniquely combine to
+* a sum of 2^columns - 1 or 0, depending on if even or odd is chosen.
+*/
+void generateBigChunk(int row, int col, bool genOdds) {
+    unsigned long long* solutionArr = (unsigned long long*)calloc(col, sizeof(unsigned long long));
+    unsigned long long maxVal = MULTIPLY_POW2(1,col) - 1; // Max value for column number of bits
+    solutionArr[0] = maxVal;
+    unsigned long long randVal;
+    bool flag_unique = 0;  // Flag to raise if RNG value is found to be unique
+    // Find correct vals
+    for (int i = 0; i < numSolution - 1; i++) {  // For each solution we have to generate...
+        while (!flag_unique) {                   // While we still don't have a unique number...
+            flag_unique = 1;
+            randVal = bigRand(col);         // Generate a random number in range 1 to maxVal-1
+            for (int j = 0; j <= i; j++) {       // For each solution we've already generated...
+                if (randVal == solutionArr[j]) { // If we find it already exists in our solution...
+                    flag_unique = 0;             // Flag the random number for a redo
+                }
+            }                                    
+        }                                        // Otherwise, we escape with our unique number
+        flag_unique = 0;
+        solutionArr[i] ^= randVal;               // Overwrite the last XOR'd number with the XOR of the unique RNG number
+        solutionArr[i + 1] = randVal;            // Store the unique RNG number as a solution
+    }
+
+    // Find dummies
+    for (int i = 0; i < row - numSolution; i++) {  // For each dummy we have to generate...
+        while (!flag_unique) {                   // While we still don't have a valid dummy...
+            randVal = bigRand(col);         // Generate a random number in range 1 to maxVal-1
+            flag_unique = dummyChecker(randVal, numSolution+i, solutionArr, maxVal); // Check the validity of the dummy
+        }                                        // Otherwise, we escape with our unique number
+        flag_unique = 0;
+        solutionArr[numSolution+i] = randVal;            // Store the unique RNG number as a solution
+    }
+
+    // Print out the bits
+    for (int i = 0; i < row; i++) {
+        for (int j = 0; j < col; j++) {
+            printf("%d ", bitRead(solutionArr[i], j));
         }
         printf("\n");
     }
+    
+    //printChunk(chunkPattern);
 }
 
-/*
- * Function: generateChunk
- * Takes the globally defined number of switches and number of
- * desired correct switches. Generates an array of correct switches
- * and an array of their light patterns.
- *
- * To create a solution for all on, we can use the fact that XOR will always produce a 1 on an odd number of 1s.
- * We will create a set of odd numbers between 1 and numRow. We will generate odd numbers, and store them as
- * a number that, in boolean, represents the number of 1 bools that coorespond to the odd number generated. Store
- * that occurence in count array. For each occurence there will be x
- *
- * The total number of permutations of an array will be:
- *
- *        n! / (k!(n - k)!)
- *
- * Where n is the length of the array and k is the number of ones
- *
- * If we are generating odd arrays and the number of correct arrays is less than 8, the remainder should be legit dummies
- * If we are generating even arrays, the number of correct arrays MUST be 0 we do nto need to generate dummy arrays when generating evens.
- */
-bool generateChunk(byte row, byte col, bool genOdds) {
-    int nCrArr[8];             // Temporary array to store nCr results
-    byte numOnes = (row >> 1); // (row/2 rounded down) Initialize number of ones to even occurences
-    if (genOdds) {               // If this chunk should produce an odd number of ones...
-        numOnes += (row & 0x01); // (row/2 returning the rounded num) Adjust the number of ones to accomodate the number of odd occurences
-    }
-    for (byte i = 0; i < 8; i++) {   // For each array...
-        chunkPattern[i] = 0;     // Zero out the array
-    }
-    if (!numOnes) {              // If we can't generate any ones...
-        return 0;                // Do not execute tasks or flag for a regeneration
-    }
-
-    byte* countOnes = (byte*)calloc(numOnes, sizeof(byte)); // Stores the number of shifts to perform
-    byte* combos = (byte*)calloc(numOnes, sizeof(byte));    // Stores the total combinations for each valid number of ones within the number of columns
-    if (countOnes == NULL || combos == NULL) {              // If we ran out of memory to calloc to countOnes or combos...
-        printf("Memory unable to be allocated to countOnes and combos in generateChunk.\n");
-        exit(0);                                            // Terminate with error
-    }
-    byte numToGo = col;                      // Number of arrays left to generate during reservoir sampling
-    for (byte i = 0; i < numOnes; i++) {           // For every odd/even amount of ones possible...
-        countOnes[i] = 0;                      // Initialize count occurences to 0. Necessary for repeat calls to function.
-        if (genOdds) {                           // If we're generating an odd array...
-            combos[i] = nCr(ODD_NUM(i + 1), row);  // (2*i)+1 Calculate the number of odd combinations possible for all ones within the number of pre-transposed rows
-        }
-        else {                                // Otherwise, we're generating an even array...
-            combos[i] = nCr(EVEN_NUM(i + 1), row); // 2*(i+1) Calculate the number of even combinations possible for all ones within the number of pre-transposed rows
-        }
-    }
-    for (byte i = 0; i < col; i++) {         // For each array to generate... 
-        countOnes[random(0, numOnes)]++; // Generate a random number of odd/even ones within the number of columns in the chunk and increment its occurence
-    }
-    for (int i = 0; i < numOnes; i++) {                          // For each potential odd/even number of ones...
-        int* resArr = (int*)calloc(combos[i], sizeof(int)); // Initialize: Pattern data for reservoir sampling
-        if (resArr == NULL) {                                // If we ran out of memory to calloc to resArr...
-            printf("Memory unable to be allocated to resArr during array generation in generateChunk.\n");
-            exit(0);                                         // Terminate with error
-        }
-        byte combosLeft = combos[i];        // Initialize: Number of unique combinations remaining
-        int resLower = 0;                   //           : Lower bound for reservoir sampling
-        int resUpper = combos[i] - 1;         //           : Upper bound for reservoir sampling
-        for (byte k = 0; k < combos[i]; k++)     // For each possible combination of selected number of ones...
-            resArr[k] = k;                    // Initialize each index in the reservoir sampling array with every unique number
-        for (byte j = 0; j < countOnes[i]; j++) { // For each occurence of that odd number...
-            if (!combosLeft) {                  // If we ran out of unique combos to make...
-                combosLeft = combos[i];         // Reinitialize: Unique combos remaining
-                resLower = 0;                   //             : Lower bound for reservoir sampling
-                resUpper = combos[i] - 1;         //             : Upper bound for reservoir sampling
-                for (byte k = 0; k < combos[i]; k++) //
-                    resArr[k] = k;                //             : Each index in the reservoir sampling array with every unique number
-            }
-            int randCombo = random(resLower, resUpper + 1);                         // Generate a random number of iterations within the unique number of iterations left
-            randCombo = resSort(resArr, randCombo, &resUpper, &resLower);        // Perform a reservoir sample to store and eliminate the number.
-            combosLeft--;                                                        // Decrement the possible combinations by 1, since one was used and eliminated
-            if (genOdds) {                                                         // If we're generating an odd array...
-                nCrArr[col - numToGo] = nCrScrambler(ODD_NUM(i + 1), row, randCombo);  // Generate a valid odd array with the random interation value and store the array in the solution
-            }
-            else {                                                              // Otherwise, we're generating an even array...
-                nCrArr[col - numToGo] = nCrScrambler(EVEN_NUM(i + 1), row, randCombo); // Generate a valid even array with the random interation value and store the array in the solution
-            }
-            numToGo--;                                                           // Decrement the number of combos left to generate
-        }
-        free(resArr);  // Release memory used by: resArr
-    }
-    free(combos);    //                       : combos
-    free(countOnes); //                       : countOnes
-
-    // Scramble the order of these arrays up with another reservoir sampling
-    int* resArr = (int*)calloc(col, sizeof(int)); // Initialize: array of nCr results for reservoir sampling
-    if (resArr == NULL) {                          // If we ran out of memory to calloc to resArr...
-        printf("Memory unable to be allocated to resArr during reservoir sampling in generateChunk.\n");
-        exit(0);                                   // Terminate with error
-    }
-    int resLower = 0;          // Lower bound for reservoir sampling
-    int resUpper = col - 1;      // Upper bound for reservoir sampling
-    for (byte i = 0; i < col; i++) { // For each nCr result...
-        resArr[i] = nCrArr[i];   // Store that result in the reservoir sampling array
-    }
-    for (byte i = 0; i < col; i++) {                                      // For each nCr result...
-        int randCombo = random(resLower, resUpper + 1);                  // Generate a unique position to grab a number from
-        nCrArr[i] = resSort(resArr, randCombo, &resUpper, &resLower); // Perform a reservoir sample to store and eliminate the number.
-    }
-    free(resArr);                                                   // Release memory used by resArr
-
-    // Transpose the array to get our numbers....
-    for (byte i = 0; i < 8; i++) {                                   // For each column array byte in the chunk...
-        for (byte j = 0; j < 8; j++) {                                 // For each row array byte in the chunk...
-            if (j < row && i < col) {                                    // If a pattern was generated for this row and column...
-                bitWrite(chunkPattern[j], i, bitRead(nCrArr[i], j)); // Store the jth bool of the ith nCr array in the ith bool of the jth solution
-            }
-            else {                                                  // Otherwise, theres no relevant data to store...
-                bitClear(chunkPattern[j], i);                        // Store a placeholder 0 in the ith bool of the jth solution
-            }
-        }
-    }
-    printf("Generated chunk of size %d x %d\n", row, col);
-    int transCombos = 0;                       // Stores the total combinations for all valid combinations of ones of the transposed chunk
-    for (byte i = 0; i < numOnes; i++) {             // For each possible combination of ones...
-        if (genOdds) {                             // If we're generating odd arrays..
-            transCombos += nCr(ODD_NUM(i + 1), col);  // (2*i)+1 Calculate the number of odd combinations possible for all ones within the number of columns
-        }
-        else {                                  // Otherwise...
-            transCombos += nCr(EVEN_NUM(i + 1), col); // 2*(i+1) Calculate the number of even combinations possible for all ones within the number of columns
-        }
-    }
-    printChunk(chunkPattern);
-    // Determine which dummy switches cannot be allowed to generate
-    const byte maxCombos = (1 << col) - 1;                     // (2^col - 1) Determine the maximum combinations of ones for the column size
-    byte* dummyFlags = (byte*)calloc(maxCombos+1, sizeof(byte)); // Initialize: Array of flags indicating every wrong array byte
-    if (dummyFlags == NULL) {                                    // If we ran out of memory to calloc to dummyFlags...
-        printf("Memory unable to be allocated to dummyFlags in generateChunk.\n");
-        exit(0);                                                 // Terminate with error
-    }
-    for (byte i = 0; i < maxCombos; i++) {
-        dummyFlags[i] = 0;
-    }
-    byte dummyCounter = 0;
-    dummyFlags[maxCombos] = 1;                    // (2^col - 1) is never a valid array byte
-    dummyFlags[0] = 1;                              // 0 is never a valid array byte
-    for (byte i = 1; i < row; i++) {                      // For each number of array bytes in the solution to XOR, aside from all of them...
-        byte wrongCombos = nCr(i, col);               // Determine the number of times each array byte can be combined uniquely
-        for (byte j = 0; j < wrongCombos; j++) {            // For each unique array byte combo of i array bytes...
-            byte wrongArray = MULTIPLY_POW2(1,col) - 1;              // Initialize wrong array byte
-            byte arraysToXOR = nCrScrambler(i, row, j); // Determine the array bytes to XOR
-            for (byte k = 0; k < row; k++) {                  // For each array byte in the chunk...
-                if (bitRead(arraysToXOR, k)) {              // If we need to XOR this array byte...
-                    wrongArray ^= chunkPattern[k];          // XOR this array byte to produce a dummy that would ruin a unique solution
-                }
-            }
-            dummyFlags[wrongArray] = 1;                 // Flag the generated array byte as a dummy to avoid
-        }
-    }
-    printf("\nFound valid dummies at...\n");
-    for (byte i = 0; i < (1 << col) - 1; i++) {
-        if (!dummyFlags[i]) {
-            printf("%d, ", i);
-            dummyCounter++;
-        }
-    }
-    free(dummyFlags); // Release memory used by dummyFlags
-    printf("Found %d valid dummy arrays.\n", dummyCounter);
-    //if(!isSolutionValid(chunkPattern, row) && transCombos >= col){ // If the solution has duplicates and it's possible to make them unique...
-    //    return 1;                                                    // Bad solution, flag for a redo
-    //}
-    /*if(false){ // We ONLY need to perform this during odd generation (correct arrays).
-      // Determine which dummy switches cannot be allowed to generate
-      byte dummyCombos = (1 << col) - 1; // Total possible arrays
-      bool resCount[dummyCombos];            // Stores every occurence of an array during reservoir sampling
-      int resDummy[dummyCombos];            // Stores all possible unique dummy arrays that will not produce a solution
-      resLower = 1;                          // Lower bound for reservoir sampling. Prefilter all 0's
-      resUpper = dummyCombos-2;              // Upper bound for reservoir sampling. Prefilter all 1's
-      for(byte i=0; i<dummyCombos; i++){ // For each possible array...
-        resCount[i] = 0;                 // Initialize array count occurences to 0. Necessary for repeat calls to function.
-        resDummy[i] = i;                 // Store that array for reservoir sampling
-      }
-
-      for(byte i=0; i<row; i++){                      // For each correct array...
-        solution[i] = i;                                     // Initialize the positions of the solution arrays
-        resSort(resDummy, chunkPattern[i], &resUpper, &resLower); // Perform a reservoir sample to eliminate the number.
-        resCount[chunkPattern[i]] = 1;                            // Flag this number for being removed as a dummy option
-      }
-      for(byte i=1; i<row; i++){                      // For each number of arrays in the solution to XOR, aside from all of them...
-        int wrongCombos = nCr(i, row);              // Determine the number of times each array can be combined uniquely
-        for(int j=0; j<wrongCombos; j++){                    // For the number times we can combine each array...
-          int wrongArray = 0;                               // Stores resulting wrong array
-          byte arraysToXOR = nCrScrambler(i, row, j); // Determine the array combo to XOR
-          for(byte k=0; k<row; k++){                  // For each array in the solution...
-            if(bitRead(arraysToXOR, k)){                     // If we need to XOR this array...
-              wrongArray ^= chunkPattern[k];                      // XOR this array
-            }
-          }
-          if(!resCount[wrongArray]){                             // If this array was not already determined to be wrong...
-            resSort(resDummy, wrongArray, &resUpper, &resLower); // Perform a reservoir sample to eliminate the number.
-            resCount[wrongArray] = 1;                            // Flag this number for being removed as an option
-          }
-        }
-      }
-
-      // FINALLY, we can produce proper dummy arrays
-      for(byte i=row; i<col; i++){                          // For the number of dummy arrays to produce...
-        int randArr = random(resLower,resUpper+1);                          // Generate a random position to pull a dummy array from the dummy reservoir
-        chunkPattern[i] = resSort(resDummy, randArr, &resUpper, &resLower); // Perform a reservoir sample to generate a unique, valid dummy array
-      }
-    }*/
-
-    return 0;
-}
-
-/*
- * Function: generateSolution
- * Takes the globally defined number of switches and number of
- * desired correct switches. Generates an array of correct switches
- * and an array of their light patterns.
- *
- * To create a solution for all on, we can use the fact that XOR will always produce a 1 on an odd number of 1s.
- * We will create a set of odd numbers between 1 and numRow. We will generate odd numbers, and store them as
- * a number that, in boolean, represents the number of 1 bools that coorespond to the odd number generated. Store
- * that occurence in count array. For each occurence there will be x
- *
- * The total number of permutations of an array will be:
- *
- *        n! / (k!(n - k)!)
- *
- * Where n is the length of the array and k is the number of ones
- *
- * max 8x8x8 arr, split into array chunks
- * arrSize, number of booleans, rows of initial program, uniquely find each combo of 8 as well as remainder
- * numSolution, cols of initial program, find the first 8 odd, then every proceeding combination MUST BE EVEN. perhaps a bool toggle?
- */
-void generateSolution() {
-    printf("Generating a boolean array of %d row bytes and %d column bytes...\n", rowChunk, colChunk);
-    //Determine the number of chunks to produce and their location
-    int correctToGo = numSolution; // Store the number of correct arrays to generate to count
-    int correctRow = DIVIDE_POW2D(numSolution, 3) + (numSolution % 8 > 0); // Store the number of row chunks to generate to complete the correct arrays
-    byte n[8] = { 0,0,0,0,0,0,0,0 };
-    for (int i = 0; i < numSolution; i++) { // For each solution array...
-        solution[i] = i; // Initialize the index of each solution array
-    }
-    for (byte i = 0; i < correctRow; i++) { // For each row chunk to create (vertical)...
-        byte rows = 8;
-        if (!(DIVIDE_POW2D(correctToGo, 3))) { // If we have less than 8 solutions to generate...
-            rows = correctToGo; // Make the odds generated equal to the last bit of solution arrays
-        }
-        if (i == correctRow - 1 && lastRow) { //If this is the last row chunk to create and we have an incomplete chunk to make...
-            rows = lastRow; // Resize the row dimension of the chunk to the number of arrays in the last row
-        }
-        for (byte j = 0; j < colChunk; j++) { // For each column chunk to create (horizontal)...
-            byte columns = 8;
-            if (j == colChunk - 1 && lastCol) { // If this is the last column chunk to create and we have an incomplete chunk to make...
-                columns = lastCol;              // Resize the column dimension of the chunk to the amount of bools in the last column
-            }
-            bool flag_redo; // Flag to trigger a regeneration
-            //Serial.print("Generating chunk at position [");;
-            //Serial.print(i);
-            //Serial.print(",");
-            //Serial.print(j);
-            //Serial.println("]");
-            flag_redo = generateChunk(rows, columns, (i == 0));
-            while (flag_redo) {
-                printf("I made a bad chunk. Let's try again...\n");
-                flag_redo = generateChunk(rows, columns, (i == 0));
-            }
-            for (byte k = 0; k < 8; k++) {
-                pattern[i][j][k] = chunkPattern[k];
-            }
-        }
-        correctToGo -= rows; // Check off the number of correct array generated
-    }
-}
-/*// FINALLY, we can produce proper dummy arrays
-for(byte i=0; i<numRow - numSolution; i++){                       // For the number of dummy arrays to produce...
-  int patternUpper = i + numSolution;                            // Upper bound of the current pattern array
-  int randArr = random(resLower,resUpper+1);                    // Generate a random position to pull a dummy array from the dummy reservoir
-  int randPos = random(0,patternUpper+1);                       // Generate a random position in the pattern to place the dummy array
-  int dummy = resSort(resDummy, randArr, &resUpper, &resLower); // Perform a reservoir sample to generate a unique, valid dummy array
-  shiftInRight(dummy, randPos, patternUpper);                    // Insert the dummy into the pattern
-  // Update the position of the solution arrays
-  for(byte j=0; j<numSolution; j++){  // For each solution array...
-    if(solution[j] >= randPos){      // If the inserted dummy array shifted the current solution array over...
-      solution[j]++;                 // Update the position of the solution array
-    }
-  }
-}
-return 0;
-}*/
 void printRowDivider(bool index) {
     printf("   |");                      // Print a row chunk divider
     for (byte i = 0; i < colChunk; i++) {      // For each column chunk...
@@ -787,7 +399,7 @@ void printPuzzle() {
     }
 }
 
-void printChunk(byte chunk[8]) {
+void printChunk(byte chunk[12]) {
     printf("The chunk generated, top to bottom, is...\n");
     printf("  ,");
     for (byte i = 0; i < 8; i++) {
@@ -807,35 +419,11 @@ void printChunk(byte chunk[8]) {
 }
 
 int main() {
+    
     srand(time(NULL));          // Use noise fluxuations from the A0 pin to seed the RNG
-    generateSolution();          // Create a valid solution for our predefined array size
-    // Print our solution
-    printPuzzle();
+    generateBigChunk(numRow,arrSize,1);
     printf("The solution arrays are at indexes: ");
     for (int i = 0; i < numSolution; i++) { // For each solution array..
-        printf("%d ", solution[i]);
+        printf("%d ", i);
     }
-    printf("\nFinding valid dummies...\n");
-    findDummies(0);
-    printf("\nFound valid dummies at...\n");
-    byte dummyCounter = 0;
-    for (int i = 0; i < 255; i++) { // For each array byte combo in col...
-        if (!dummyCount[0][i]) {
-            printf("%d, ", i);
-            dummyCounter++;
-        }
-    }
-    printf("\nThere are %d valid dummies", dummyCounter);
 }
-
-
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
-
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
