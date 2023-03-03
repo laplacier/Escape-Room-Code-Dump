@@ -1,0 +1,24 @@
+warning: TEST_OPTION (defined at C:/Users/abillingsley/Documents/GitHub/Escape-Room-Code-Dump/ESP-IDF/sample_project/components/TWAI_CAN/Kconfig:21) defined with multiple prompts in single location
+Traceback (most recent call last):
+  File "C:/Users/abillingsley/esp/esp-idf/tools/kconfig_new/confgen.py", line 607, in <module>
+    main()
+  File "C:/Users/abillingsley/esp/esp-idf/tools/kconfig_new/confgen.py", line 328, in main
+    output_function(deprecated_options, config, temp_file)
+  File "C:/Users/abillingsley/esp/esp-idf/tools/kconfig_new/confgen.py", line 440, in write_json
+    config_dict = get_json_values(config)
+  File "C:/Users/abillingsley/esp/esp-idf/tools/kconfig_new/confgen.py", line 435, in get_json_values
+    write_node(n)
+  File "C:/Users/abillingsley/esp/esp-idf/tools/kconfig_new/confgen.py", line 432, in write_node
+    val = int(val)
+ValueError: invalid literal for int() with base 10: ''
+CMake Error at C:/Users/abillingsley/esp/esp-idf/tools/cmake/kconfig.cmake:176 (message):
+  Failed to run confgen.py
+  (C:/Users/abillingsley/.espressif/python_env/idf5.0_py3.8_env/Scripts/python.exe;C:/Users/abillingsley/esp/esp-idf/tools/kconfig_new/confgen.py;--list-separator=semicolon;--kconfig;C:/Users/abillingsley/esp/esp-idf/Kconfig;--sdkconfig-rename;C:/Users/abillingsley/esp/esp-idf/sdkconfig.rename;--config;C:/Users/abillingsley/Documents/GitHub/Escape-Room-Code-Dump/ESP-IDF/sample_project/sdkconfig;--env-file;C:/Users/abillingsley/Documents/GitHub/Escape-Room-Code-Dump/ESP-IDF/sample_project/build/config.env).
+  Error 1
+Call Stack (most recent call first):
+  C:/Users/abillingsley/esp/esp-idf/tools/cmake/build.cmake:590 (__kconfig_generate_config)
+  C:/Users/abillingsley/esp/esp-idf/tools/cmake/project.cmake:440 (idf_build_process)
+  CMakeLists.txt:8 (project)
+
+
+ninja: error: rebuilding 'build.ninja': subcommand failed

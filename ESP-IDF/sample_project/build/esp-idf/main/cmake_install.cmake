@@ -1,8 +1,8 @@
-# Install script for directory: C:/Users/abillingsley/Documents/Programming/esp32dev/sample_project/main
+# Install script for directory: C:/Users/abillingsley/Documents/GitHub/Escape-Room-Code-Dump/ESP-IDF/sample_project/main
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/main")
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/prop_template")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 

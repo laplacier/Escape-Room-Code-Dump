@@ -6,7 +6,7 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: main
+# Project: prop_template
 # Configurations: 
 # =============================================================================
 # =============================================================================
@@ -14,7 +14,7 @@
 #############################################
 # Rule for compiling C files.
 
-rule C_COMPILER__main.2eelf_
+rule C_COMPILER__prop_template.2eelf_
   depfile = $DEP_FILE
   deps = gcc
   command = ccache C:\Users\abillingsley\.espressif\tools\xtensa-esp32-elf\esp-2022r1-11.2.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-gcc.exe $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
@@ -24,7 +24,7 @@ rule C_COMPILER__main.2eelf_
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_LINKER__main.2eelf_
+rule CXX_EXECUTABLE_LINKER__prop_template.2eelf_
   command = cmd.exe /C "$PRE_LINK && C:\Users\abillingsley\.espressif\tools\xtensa-esp32-elf\esp-2022r1-11.2.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-g++.exe $FLAGS $LINK_FLAGS @$RSP_FILE -o $TARGET_FILE  && $POST_BUILD"
   description = Linking CXX executable $TARGET_FILE
   rspfile = $RSP_FILE
@@ -1321,10 +1321,19 @@ rule C_STATIC_LIBRARY_LINKER____idf_main_
 
 
 #############################################
+# Rule for linking C static library.
+
+rule C_STATIC_LIBRARY_LINKER____idf_TWAI_CAN_
+  command = cmd.exe /C "$PRE_LINK && C:\Users\abillingsley\.espressif\tools\cmake\3.24.0\bin\cmake.exe -E rm -f $TARGET_FILE && C:\Users\abillingsley\.espressif\tools\xtensa-esp32-elf\esp-2022r1-11.2.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-ar.exe qc $TARGET_FILE $LINK_FLAGS $in && C:\Users\abillingsley\.espressif\tools\xtensa-esp32-elf\esp-2022r1-11.2.0\xtensa-esp32-elf\bin\xtensa-esp32-elf-ranlib.exe $TARGET_FILE && $POST_BUILD"
+  description = Linking C static library $TARGET_FILE
+  restat = $RESTAT
+
+
+#############################################
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = C:\Users\abillingsley\.espressif\tools\cmake\3.24.0\bin\cmake.exe --regenerate-during-build -SC:\Users\abillingsley\Documents\Programming\esp32dev\sample_project -BC:\Users\abillingsley\Documents\Programming\esp32dev\sample_project\build
+  command = C:\Users\abillingsley\.espressif\tools\cmake\3.24.0\bin\cmake.exe --regenerate-during-build -SC:\Users\abillingsley\Documents\GitHub\Escape-Room-Code-Dump\ESP-IDF\sample_project -BC:\Users\abillingsley\Documents\GitHub\Escape-Room-Code-Dump\ESP-IDF\sample_project\build
   description = Re-running CMake...
   generator = 1
 

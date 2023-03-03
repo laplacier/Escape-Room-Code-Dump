@@ -1,3 +1,7 @@
 # ninja log v5
-0	6380542	0	CMakeFiles/confserver	b576dcff892f3066
-0	6380542	0	C:/Users/abillingsley/Documents/Programming/esp32dev/sample_project/build/CMakeFiles/confserver	b576dcff892f3066
+0	288973	0	CMakeFiles/confserver	1eb034e92d299e44
+0	288973	0	C:/Users/abillingsley/Documents/GitHub/Escape-Room-Code-Dump/ESP-IDF/sample_project/build/CMakeFiles/confserver	1eb034e92d299e44
+10	14860	6995665582208960	build.ninja	273e0283000212df
+11	19081	6995665582208960	build.ninja	273e0283000212df
+1	19497	0	CMakeFiles/confserver	1eb034e92d299e44
+1	19497	0	C:/Users/abillingsley/Documents/GitHub/Escape-Room-Code-Dump/ESP-IDF/sample_project/build/CMakeFiles/confserver	1eb034e92d299e44

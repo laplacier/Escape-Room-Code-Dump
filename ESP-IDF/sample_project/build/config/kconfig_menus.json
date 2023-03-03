@@ -22117,6 +22117,130 @@
                 "id": "component-config-supplicant",
                 "title": "Supplicant",
                 "type": "menu"
+            },
+            {
+                "children": [
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": null,
+                        "id": "ENV_GPIO_RANGE_MIN",
+                        "name": "ENV_GPIO_RANGE_MIN",
+                        "range": null,
+                        "title": null,
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": null,
+                        "id": "ENV_GPIO_RANGE_MAX",
+                        "name": "ENV_GPIO_RANGE_MAX",
+                        "range": null,
+                        "title": null,
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": null,
+                        "id": "ENV_GPIO_IN_RANGE_MAX",
+                        "name": "ENV_GPIO_IN_RANGE_MAX",
+                        "range": null,
+                        "title": null,
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": null,
+                        "id": "ENV_GPIO_OUT_RANGE_MAX",
+                        "name": "ENV_GPIO_OUT_RANGE_MAX",
+                        "range": null,
+                        "title": null,
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "Select this if you wish for this prop to communicate on the CAN network.",
+                        "id": "ENABLE_CAN",
+                        "name": "ENABLE_CAN",
+                        "range": null,
+                        "title": "Enable CAN communication.",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "This option selects the GPIO pin used for the TX signal. On the prop\nPCBs, the pin used is the default of 19.",
+                        "id": "TX_GPIO_NUM",
+                        "name": "TX_GPIO_NUM",
+                        "range": [
+                            0,
+                            33
+                        ],
+                        "title": "TX GPIO number",
+                        "type": "int"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "This option selects the GPIO pin used for the RX signal. On the prop\nPCBs, the pin used is the default of 22.",
+                        "id": "RX_GPIO_NUM",
+                        "name": "RX_GPIO_NUM",
+                        "range": [
+                            0,
+                            39
+                        ],
+                        "title": "RX GPIO number",
+                        "type": "int"
+                    },
+                    {
+                        "children": [
+                            {
+                                "children": [],
+                                "depends_on": "<choice>",
+                                "help": "Receive and Transmit - Normal operation. Can transmit and receive \nmessages on the CAN Bus.",
+                                "id": "CAN_OPERATION_FULL",
+                                "name": "CAN_OPERATION_FULL",
+                                "range": null,
+                                "title": "Receive and Transmit",
+                                "type": "bool"
+                            },
+                            {
+                                "children": [],
+                                "depends_on": "<choice>",
+                                "help": null,
+                                "id": "CAN_OPERATION_HALF",
+                                "name": "CAN_OPERATION_HALF",
+                                "range": null,
+                                "title": "Listen only",
+                                "type": "bool"
+                            }
+                        ],
+                        "depends_on": "ENABLE_CAN",
+                        "help": "Choose the type of operation required by the prop:\n\nListen only - Silent operation. Will only listen to the CAN Bus and\nwill not transmit any messages aside from acknowledging messages\nbeing seen, and replying DND to ping requests. Other props will\nno longer ping the prop upon seeing the DND request until a prop\nwith the same ID sends a HELLO message.",
+                        "id": "component-config-prop-template-options-can-operation-mode-",
+                        "name": null,
+                        "title": "CAN operation mode:",
+                        "type": "choice"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": "ENABLE_CAN && CAN_OPERATION_FULL",
+                        "help": "Allows the prop to inherit the CAN responsibilities of another prop it has \nseen that no longer exists on the CAN Bus. Props will battle for \ninheritance with other props with this option enabled and the lowest ID \nwill win.",
+                        "id": "ENABLE_CAN_INHERIT",
+                        "name": "ENABLE_CAN_INHERIT",
+                        "range": null,
+                        "title": "Enable prop inheritance",
+                        "type": "bool"
+                    }
+                ],
+                "depends_on": null,
+                "id": "component-config-prop-template-options",
+                "title": "Prop Template Options",
+                "type": "menu"
             }
         ],
         "depends_on": null,
