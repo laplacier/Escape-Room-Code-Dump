@@ -1,5 +1,11 @@
 {
   "C_Cpp.intelliSenseEngine": "Tag Parser",
   "idf.adapterTargetName": "esp32",
-  "terminal.explorerKind": "external"
+  "terminal.explorerKind": "external",
+  "idf.portWin": "COM4",
+  "idf.flashType": "UART",
+  "files.associations": {
+    "stdio.h": "c",
+    "freertos.h": "c"
+  }
 }

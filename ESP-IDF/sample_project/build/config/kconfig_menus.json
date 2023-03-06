@@ -22201,7 +22201,7 @@
                             {
                                 "children": [],
                                 "depends_on": "<choice>",
-                                "help": "Receive and Transmit - Normal operation. Can transmit and receive \nmessages on the CAN Bus.",
+                                "help": null,
                                 "id": "CAN_OPERATION_FULL",
                                 "name": "CAN_OPERATION_FULL",
                                 "range": null,
@@ -22220,7 +22220,7 @@
                             }
                         ],
                         "depends_on": "ENABLE_CAN",
-                        "help": "Choose the type of operation required by the prop:\n\nListen only - Silent operation. Will only listen to the CAN Bus and\nwill not transmit any messages aside from acknowledging messages\nbeing seen, and replying DND to ping requests. Other props will\nno longer ping the prop upon seeing the DND request until a prop\nwith the same ID sends a HELLO message.",
+                        "help": "Receive and Transmit - Normal operation. Can transmit and receive \nmessages on the CAN Bus.\n\nListen only - Silent operation. Will only listen to the CAN Bus and\nwill not transmit any messages aside from acknowledging messages\nbeing seen, and replying DND to ping requests. Other props will\nno longer ping the prop upon seeing the DND request until a prop\nwith the same ID sends a HELLO message.",
                         "id": "component-config-prop-template-options-can-operation-mode-",
                         "name": null,
                         "title": "CAN operation mode:",
