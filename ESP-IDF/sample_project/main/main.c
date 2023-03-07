@@ -38,20 +38,20 @@ static QueueHandle_t ctrl_task_queue;
 static QueueHandle_t tx_task_queue;
 static SemaphoreHandle_t ctrl_task_sem;
 static SemaphoreHandle_t rx_task_sem;
+static SemaphoreHandle_t rx_payload_sem;
 static SemaphoreHandle_t tx_task_sem;
 //static SemaphoreHandle_t puzzle_task_sem;
+static SemaphoreHandle_t puzzle_payload_sem;
 //static SemaphoreHandle_t music_task_sem;
 //static SemaphoreHandle_t gpio_task_sem;
 static SemaphoreHandle_t state_set_mutex;
 
-uint8_t[7] rx_payload;
+uint8_t rx_payload[7];
 
 typedef enum {
     BEGIN,
     RX_PING,
-    STATE_SET,
-    GPIO_SET,
-    PLAY_SOUND,
+    RX_CMD,
     INHERIT_REQ,
     INHERIT_STOP
 } ctrl_task_action_t;
@@ -65,6 +65,10 @@ typedef enum {
     INHERIT_PASS
 } tx_task_action_t;
 
+typedef enum {
+    CMD
+} puzzle_task_action_t;
+
 
 static void ctrl_task(void *arg){
     ctrl_task_action_t ctrl_action;
@@ -76,7 +80,7 @@ static void ctrl_task(void *arg){
         xSemaphoreTake(ctrl_task_sem, portMAX_DELAY); // Blocked from executing until app_main, puzzle_task or rx_task gives a semaphore
         xQueueReceive(ctrl_task_queue, &ctrl_action, pdMS_TO_TICKS(10)); // Pull task from queue
         if(BEGIN){
-            tx_action = TX_PING;
+            tx_action = TX_HELLO;
             xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
             xSemaphoreGive(tx_task_sem);
             ESP_LOGI(TAG, "Init successful");
@@ -87,11 +91,11 @@ static void ctrl_task(void *arg){
             xSemaphoreGive(tx_task_sem);
             ESP_LOGI(TAG, "Sent ping task to TX");
         }
-        else if(STATE_SET){
-            //puzzle_action = SET_STATE
-            //xQueueSend(puzzle_task_queue, &puzzle_action, portMAX_DELAY);
-            //xSemaphoreGive(puzzle_task_sem);
-            ESP_LOGI(TAG, "Sent state %d to TX",rx_set_state);
+        else if(RX_CMD){
+            puzzle_action = CMD
+            xQueueSend(puzzle_task_queue, &puzzle_action, portMAX_DELAY);
+            xSemaphoreGive(puzzle_task_sem);
+            ESP_LOGI(TAG, "Sent CMD to Puzzle");
         }
     }
 }
@@ -173,6 +177,17 @@ static void fake_bus_task(void *arg){
     }
 }
 
+static void puzzle_task(void *arg){
+    puzzle_task_action_t action;
+    static const char* TAG = "Puzzle";
+    ESP_LOGI(TAG, "Task initialized");
+    for(;;){
+        if(xSemaphoreTake(puzzle_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until ctrl_task gives semaphore
+            xQueueReceive(puzzle_task_queue, &action, pdMS_TO_TICKS(10)); // Pull task from queue
+        }
+    }
+}
+
 void app_main(void){
     static const char* TAG = "Init_Main";
     tx_task_queue = xQueueCreate(1, sizeof(tx_task_action_t));
@@ -180,7 +195,7 @@ void app_main(void){
     ctrl_task_sem = xSemaphoreCreateCounting( 10, 0 );
     rx_task_sem = xSemaphoreCreateBinary();
     tx_task_sem = xSemaphoreCreateCounting( 10, 0 );
-    //puzzle_task_sem = xSemaphoreCreateCounting( 10, 0 );
+    puzzle_task_sem = xSemaphoreCreateCounting( 10, 0 );
     rx_payload_sem = xSemaphoreCreateBinary(); // Allows rx_task to write to the data payload
     puzzle_payload_sem = xSemaphoreCreateBinary(); // Allows puzzle_task to read the data payload
 
@@ -188,7 +203,7 @@ void app_main(void){
     xTaskCreatePinnedToCore(ctrl_task, "CAN_Controller", 4096, NULL, CTRL_TASK_PRIO, NULL, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(rx_task, "CAN_Rx", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(fake_bus_task, "CAN_Fake_Bus_Task", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
-    //xTaskCreatePinnedToCore(puzzle_task, "Puzzle", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(puzzle_task, "Puzzle", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
     //xTaskCreatePinnedToCore(music_task, "Music", 4096, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
     //xTaskCreatePinnedToCore(gpio_task, "GPIO", 4096, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
 

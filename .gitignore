@@ -1,0 +1,3 @@
+ESP-IDF/sample_project/build
+*.old
+*.[oa]
