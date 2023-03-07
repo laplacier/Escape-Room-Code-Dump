@@ -1483,19 +1483,27 @@ CONFIG_WPA_MBEDTLS_TLS_CLIENT=y
 # end of Supplicant
 
 #
-# Prop Template Options
+# Prop Sound Options
 #
 CONFIG_ENV_GPIO_RANGE_MIN=0
 CONFIG_ENV_GPIO_RANGE_MAX=39
 CONFIG_ENV_GPIO_IN_RANGE_MAX=39
 CONFIG_ENV_GPIO_OUT_RANGE_MAX=33
+CONFIG_ENABLE_SOUND=y
+CONFIG_VOLUME=30
+CONFIG_COMMON_AUDIO=y
+# end of Prop Sound Options
+
+#
+# Prop CAN Options
+#
 CONFIG_ENABLE_CAN=y
 CONFIG_TX_GPIO_NUM=19
 CONFIG_RX_GPIO_NUM=22
 CONFIG_CAN_OPERATION_FULL=y
 # CONFIG_CAN_OPERATION_HALF is not set
 CONFIG_ENABLE_CAN_INHERIT=y
-# end of Prop Template Options
+# end of Prop CAN Options
 # end of Component config
 
 # Deprecated options for backward compatibility

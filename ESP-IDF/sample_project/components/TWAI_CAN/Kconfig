@@ -1,4 +1,4 @@
-menu "Prop Template Options"
+menu "Prop CAN Options"
     orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
 
     config ENABLE_CAN
