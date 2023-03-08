@@ -1,12 +1,14 @@
+#include <stdio.h>
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include "driver/uart.h"
+#include "esp_log.h"
 #include "sound.h"
 
-#define UART_RX 17
-#define UART_TX 16
-#define UART UART_NUM_2
-
-static TaskHandle_t sound_task_handle;
-static void sound_init(void) 
+TaskHandle_t sound_task_handle;
+void sound_init(void) 
 {
     const uart_config_t uart_config = {
         .baud_rate = 9600,
@@ -18,9 +20,9 @@ static void sound_init(void)
     };
 
     // We will only send data to the DFPlayer Mini in NO ACK mode, no RX required
-    uart_driver_install(UART, 0, 0, 0, NULL, 0);
+    uart_driver_install(UART, 2048, 0, 0, NULL, 0);
     uart_param_config(UART, &uart_config);
-    uart_set_pin(UART, UART_TX, UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_set_pin(UART, UART_TX_GPIO, UART_RX_GPIO, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 
     // Send commands to DFPlayer Mini to initialize sound settings
     sendAudioCommand(0x0D,0);              // Send command 0x0D (Enable DFPlayer Mini) and no parameter required
@@ -28,11 +30,11 @@ static void sound_init(void)
     sendAudioCommand(0x06, CONFIG_VOLUME); // Send command 0x06 (Set Volume) and parameter CONFIG_VOLUME
     
     // Create sound task
-    xTaskCreatePinnedToCore(sound_task, "sound", 4096, NULL, GENERIC_TASK_PRIO, &sound_task_handle, tskNO_AFFINITY);
-    //xTaskNotify(sound_task_handle,0x50,eSetValueWithOverwrite);
+    xTaskCreatePinnedToCore(sound_task, "sound", 2048, NULL, GENERIC_TASK_PRIO, &sound_task_handle, tskNO_AFFINITY);
+    ESP_LOGI("Sound", "Setup complete");
 }
 
-static void sendAudioCommand(uint8_t command, uint16_t parameter){
+void sendAudioCommand(uint8_t command, uint16_t parameter){
     //------------------ CREATE INSTRUCTION -------------------------//
     uint8_t startByte     = 0x7E; // Start
     uint8_t versionByte   = 0xFF; // Version
@@ -63,18 +65,16 @@ static void sendAudioCommand(uint8_t command, uint16_t parameter){
     };
 
     //------------------- SEND INSTRUCTION --------------------------//
-    for (int i=0; i<10; i++){                      // For each byte in the instruction...
-        uart_write_bytes(UART, instruction[i], 1); // Send the selected byte to the DFPlayer Mini via serial
-    }
+    uart_write_bytes(UART, instruction, 10); // Send the selected byte to the DFPlayer Mini via serial
     vTaskDelay(10 / portTICK_PERIOD_MS);           // Wait for the DFPlayer Mini to process the instruction
 }
 
-static void sound_task(void *arg){
+void sound_task(void *arg){
     static const char* TAG = "Sound";
-    uint8_t track;
+    uint32_t track;
     while(1){
         xTaskNotifyWait(0X00, ULONG_MAX, &track, portMAX_DELAY); // Blocked from executing until puzzle_task gives track to play
-        sendAudioCommand(0x03,track);                            // Play track.mp3 in the MP3 folder of the DFPlayer Mini
-        ESP_LOGI(TAG, "Playing %d.mp3",track);
+        sendAudioCommand(0x03,(uint8_t)track);                            // Play track.mp3 in the MP3 folder of the DFPlayer Mini
+        ESP_LOGI(TAG, "Playing %d.mp3",(uint8_t)track);
     }
 }

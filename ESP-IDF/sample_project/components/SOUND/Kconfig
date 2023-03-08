@@ -6,7 +6,7 @@ menu "Prop Sound Options"
         default y
         help
             Select this if you wish for this prop to play sounds during operation.
-
+            
     config VOLUME
         int "Sound volume"
         range 0 30

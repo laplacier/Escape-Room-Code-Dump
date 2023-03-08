@@ -13,7 +13,7 @@
 
 static const twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 static const twai_timing_config_t t_config = TWAI_TIMING_CONFIG_125KBITS();
-static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_GPIO, CAN_RX_GPIO, TWAI_MODE_NO_ACK);
+static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(TX_GPIO_NUM, RX_GPIO_NUM, TWAI_MODE_NO_ACK);
 static const twai_message_t ping_resp = {.identifier = 0b11000000000 + ID_PROP, .data_length_code = 0,
                                         .data = {0,0,0,0,0,0,0,0}, .self = 1};
 
@@ -37,7 +37,6 @@ void twai_can_init(void){
     tx_task_sem = xSemaphoreCreateCounting( 10, 0 );
     rx_payload_sem = xSemaphoreCreateBinary(); // Allows rx_task to write to the data payload
 
-    xTaskCreatePinnedToCore(tx_task, "CAN_Tx", 4096, NULL, TX_TASK_PRIO, NULL, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(ctrl_task, "CAN_Controller", 4096, NULL, CTRL_TASK_PRIO, NULL, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(rx_task, "CAN_Rx", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(fake_bus_task, "CAN_Fake_Bus_Task", 4096, NULL, RX_TASK_PRIO, NULL, tskNO_AFFINITY);
@@ -51,7 +50,7 @@ void twai_can_init(void){
     ctrl_task_action_t ctrl_action = BEGIN;
     xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY); // Send BEGIN job to control task
     xSemaphoreGive(ctrl_task_sem);                            // Unblock control task
-    ESP_LOGI("TWAI_CAN", "Setup complete");
+    ESP_LOGI("TWAI_CAN", "Setup complete, no TX");
 }
 
 void ctrl_task(void *arg){
@@ -64,16 +63,10 @@ void ctrl_task(void *arg){
         xSemaphoreTake(ctrl_task_sem, portMAX_DELAY); // Blocked from executing until app_main, puzzle_task or rx_task gives a semaphore
         xQueueReceive(ctrl_task_queue, &ctrl_action, pdMS_TO_TICKS(10)); // Pull task from queue
         if(ctrl_action == BEGIN){
-            tx_action = TX_HELLO;
-            xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-            xSemaphoreGive(tx_task_sem);
             xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
         }
         else if(ctrl_action == RX_PING){
-            tx_action = TX_PING;
-            xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-            xSemaphoreGive(tx_task_sem);
-            ESP_LOGI(TAG, "Sent ping task to TX");
+            ESP_LOGI(TAG, "TX disabled...");
         }
         else if(ctrl_action == RX_CMD){
             puzzle_action = CMD;
@@ -119,39 +112,13 @@ void rx_task(void *arg){
                     break;
                 default: // Unknown command
             }
-        } else {
-            //ESP_LOGI(TAG, "No messages on the bus?");
         }
     }
 }
 
 void tx_task(void *arg){
-    tx_task_action_t action;
-    static const char* TAG = "CAN_Tx";
-    ESP_LOGI(TAG, "Task initialized");
-    for(;;){
-        xSemaphoreTake(tx_task_sem, portMAX_DELAY); // Blocked from executing until ctrl_task gives semaphore
-        xQueueReceive(tx_task_queue, &action, pdMS_TO_TICKS(10)); // Pull task from queue
-        switch(action){
-            case TX_HELLO:
-                if (twai_transmit(&ping_resp, portMAX_DELAY) == ESP_OK) {
-                    ESP_LOGI(TAG, "Transmitted HELLO");
-                } else {
-                    ESP_LOGI(TAG, "Failed to transmit HELLO");
-                }
-                break;
-            case TX_PING:
-                //Queue message for transmission
-                if (twai_transmit(&ping_resp, portMAX_DELAY) == ESP_OK) {
-                    ESP_LOGI(TAG, "Transmitted ping response");
-                } else {
-                    ESP_LOGI(TAG, "Failed to transmit ping response");
-                }
-                break;
-            default:
-                ESP_LOGI(TAG, "Unknown action received: %d",action);
-        }
-    }
+    while(1)
+        vTaskDelay(portMAX_DELAY / portTICK_PERIOD_MS); // Halt forever
 }
 
 void fake_bus_task(void *arg){
