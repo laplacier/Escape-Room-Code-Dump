@@ -1,12 +1,12 @@
 #include "driver/uart.h"
+#include "sound.h"
 
 #define UART_RX 17
 #define UART_TX 16
 #define UART UART_NUM_2
 
-static const int TX_BUF_SIZE = 1024;
-
-void sound_init(void) 
+static TaskHandle_t sound_task_handle;
+static void sound_init(void) 
 {
     const uart_config_t uart_config = {
         .baud_rate = 9600,
@@ -17,20 +17,19 @@ void sound_init(void)
         .source_clk = UART_SCLK_DEFAULT,
     };
 
-    // We will only send data to the DFPlayer Mini in NO ACK mode, no RX
+    // We will only send data to the DFPlayer Mini in NO ACK mode, no RX required
     uart_driver_install(UART, 0, 0, 0, NULL, 0);
     uart_param_config(UART, &uart_config);
     uart_set_pin(UART, UART_TX, UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-}
 
-static void tx_task(void *arg)
-{
-	char* Txdata = (char*) malloc(100);
-    while (1) {
-    	sprintf (Txdata, "Hello world index = %d\r\n", num++);
-        uart_write_bytes(UART, Txdata, strlen(Txdata));
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
+    // Send commands to DFPlayer Mini to initialize sound settings
+    sendAudioCommand(0x0D,0);              // Send command 0x0D (Enable DFPlayer Mini) and no parameter required
+    sendAudioCommand(0x07,0);              // Send command 0x07 (Set EQ) and parameter 0x00 (Normal EQ)
+    sendAudioCommand(0x06, CONFIG_VOLUME); // Send command 0x06 (Set Volume) and parameter CONFIG_VOLUME
+    
+    // Create sound task
+    xTaskCreatePinnedToCore(sound_task, "sound", 4096, NULL, GENERIC_TASK_PRIO, &sound_task_handle, tskNO_AFFINITY);
+    //xTaskNotify(sound_task_handle,0x50,eSetValueWithOverwrite);
 }
 
 static void sendAudioCommand(uint8_t command, uint16_t parameter){
@@ -46,8 +45,8 @@ static void sendAudioCommand(uint8_t command, uint16_t parameter){
         commandLength +
         command +
         feedback +
-        highByte(parameter) +
-        lowByte(parameter)
+        (parameter >> 8) +
+        (parameter & 0xFF)
     );
 
     uint8_t instruction[10] = {   // Create a byte array of the instruction to send 
@@ -64,8 +63,18 @@ static void sendAudioCommand(uint8_t command, uint16_t parameter){
     };
 
     //------------------- SEND INSTRUCTION --------------------------//
-    for (int i=0; i<10; i++){       // For each byte in the instruction...
-    uart_write_bytes(UART, instruction[i], 1);      // Send the selected byte to the DFMini Player via serial
+    for (int i=0; i<10; i++){                      // For each byte in the instruction...
+        uart_write_bytes(UART, instruction[i], 1); // Send the selected byte to the DFPlayer Mini via serial
     }
-    delay(100);                            // Wait for the DFMini Player to process the instruction
+    vTaskDelay(10 / portTICK_PERIOD_MS);           // Wait for the DFPlayer Mini to process the instruction
+}
+
+static void sound_task(void *arg){
+    static const char* TAG = "Sound";
+    uint8_t track;
+    while(1){
+        xTaskNotifyWait(0X00, ULONG_MAX, &track, portMAX_DELAY); // Blocked from executing until puzzle_task gives track to play
+        sendAudioCommand(0x03,track);                            // Play track.mp3 in the MP3 folder of the DFPlayer Mini
+        ESP_LOGI(TAG, "Playing %d.mp3",track);
+    }
 }

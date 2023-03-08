@@ -1,7 +1,8 @@
-#include "driver/uart.h"
+#ifndef sound
+#define sound
 
-#define UART_RX (GPIO_NUM_17)
-#define UART_TX (GPIO_NUM_16)
-#define UART UART_NUM_2
+static void sound_init(void);
+static void sendAudioCommand(uint8_t command, uint16_t parameter);
+static void sound_task(void *arg);
 
-static const int TX_BUF_SIZE = 1024;
+#endif

@@ -191,7 +191,7 @@ static void puzzle_task(void *arg){
     uint8_t game_state = 0;
     uint8_t gpio_mask[6] = {0,0,0,0,0,0};
     uint8_t gpio_states[6] = {0,0,0,0,0,0};
-    struct state {
+    /*struct state {
         uint8_t val;
         const char *msg;
     };
@@ -201,7 +201,7 @@ static void puzzle_task(void *arg){
         {0x02, "Stage 2"},
         {0xFE, "Reset"},
         {0xFF, "Solved"}
-    };
+    };*/
     ESP_LOGI(TAG, "Task initialized");
     for(;;){
         if(xSemaphoreTake(puzzle_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until ctrl_task gives semaphore
@@ -231,7 +231,7 @@ static void puzzle_task(void *arg){
                         ESP_LOGI(TAG, "New pin states: 0x %x %x %x %x %x %x",gpio_states[0],gpio_states[1],gpio_states[2],gpio_states[3],gpio_states[4],gpio_states[5]);
                         break;
                     case 3: // Play music
-                        ESP_LOGI(TAG, "Placeholder play track %d",rx_payload[1]);
+                        xTaskNotify(sound_task_handle,rx_payload[1],eSetValueWithOverwrite);
                         break;
                     default:
                         ESP_LOGI(TAG, "Unknown command");
@@ -263,6 +263,7 @@ void app_main(void){
     //xTaskCreatePinnedToCore(music_task, "Music", 4096, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
     //xTaskCreatePinnedToCore(gpio_task, "GPIO", 4096, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
 
+    sound_init();
     //Install TWAI driver, trigger tasks to start
     ESP_ERROR_CHECK(twai_driver_install(&g_config, &t_config, &f_config));
     ESP_LOGI(TAG, "Driver installed");
