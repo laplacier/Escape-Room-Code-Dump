@@ -13,8 +13,11 @@
 
 static const twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 static const twai_timing_config_t t_config = TWAI_TIMING_CONFIG_125KBITS();
-static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_GPIO, CAN_RX_GPIO, TWAI_MODE_NO_ACK);
-g_config.tx_queue_len = 0;
+static const twai_general_config_t g_config = {.mode = TWAI_MODE_NO_ACK, .tx_io = CAN_TX_GPIO, .rx_io = CAN_RX_GPIO, \ // Same as standard, with tx_queue_len = 0
+                                               .clkout_io = TWAI_IO_UNUSED, .bus_off_io = TWAI_IO_UNUSED,            \
+                                               .tx_queue_len = 0, .rx_queue_len = 5,                                 \
+                                               .alerts_enabled = TWAI_ALERT_NONE,  .clkout_divider = 0,              \
+                                               .intr_flags = ESP_INTR_FLAG_LEVEL1};
 
 QueueHandle_t ctrl_task_queue;
 QueueHandle_t tx_task_queue;

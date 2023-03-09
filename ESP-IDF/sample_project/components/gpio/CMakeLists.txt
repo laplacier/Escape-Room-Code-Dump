@@ -4,6 +4,6 @@ else()
     set(srcs gpio-dummy.c)
 endif()
 
-idf_component_register(SRCS "${srcs}"
+idf_component_register(SRCS "gpio.c" "${srcs}"
                     INCLUDE_DIRS "."
-                    REQUIRES puzzle)
+                    REQUIRES puzzle shift_reg sound twai_can)

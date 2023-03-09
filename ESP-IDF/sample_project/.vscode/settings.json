@@ -6,6 +6,9 @@
   "idf.flashType": "UART",
   "files.associations": {
     "stdio.h": "c",
-    "freertos.h": "c"
+    "freertos.h": "c",
+    "gpio_sig_map.h": "c",
+    "esp_err.h": "c",
+    "sound.h": "c"
   }
 }

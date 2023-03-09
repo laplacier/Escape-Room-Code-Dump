@@ -54,7 +54,7 @@ void puzzle_task(void *arg){
             if(action == CMD){ // Received a forced state change from the CAN bus
                 ESP_LOGI(TAG, "Command received from CAN bus: %s",cmd[rx_payload[0]]);
                 switch(rx_payload[0]){
-                    case 0: // Change the game state
+                    case 1: // Change the game state
                         if(rx_payload[1] == game_state){ // Already in the requested state
                             ESP_LOGI(TAG, "Game already in requested state!");
                         }
@@ -62,12 +62,12 @@ void puzzle_task(void *arg){
                             game_state = rx_payload[1];
                         }
                         break;
-                    case 1: // GPIO_Mask of pins to modify
+                    case 2: // GPIO_Mask of pins to modify
                         for(int i=0; i<6; i++){
                             gpio_mask[i] = rx_payload[i+1];
                         }
                         break;
-                    case 2: // GPIO states of pins to modify
+                    case 3: // GPIO states of pins to modify
                         for(int i=0; i<6; i++){
                             rx_payload[i+1] &= gpio_mask[i];   // Read the requested pins to modify
                             gpio_states[i] &= ~(gpio_mask[i]); // Clear the pins to modify
@@ -75,7 +75,7 @@ void puzzle_task(void *arg){
                         }
                         ESP_LOGI(TAG, "New pin states: 0x %x %x %x %x %x %x",gpio_states[0],gpio_states[1],gpio_states[2],gpio_states[3],gpio_states[4],gpio_states[5]);
                         break;
-                    case 3: // Play music
+                    case 4: // Play music
                         xTaskNotify(sound_task_handle,rx_payload[1],eSetValueWithOverwrite);
                         break;
                     default:
@@ -86,42 +86,4 @@ void puzzle_task(void *arg){
         }
         // The actual puzzle goes below
     }
-}
-
-void GPIO_Init(){
-    static const char* TAG = "GPIO";
-    uint64_t mask_protect = 0;
-    if(CONFIG_ENABLE_SOUND){
-        ESP_LOGI(TAG, "Protecting sound pins");
-        mask_protect |= 1ULL << UART_TX_GPIO;
-        mask_protect |= 1ULL << UART_RX_GPIO;
-    }
-    if(CONFIG_ENABLE_CAN){
-        ESP_LOGI(TAG, "Protecting CAN pins");
-        mask_protect |= 1ULL << CAN_TX_GPIO;
-        mask_protect |= 1ULL << CAN_RX_GPIO;
-    }
-    if(CONFIG_ENABLE_SHIFT){
-        ESP_LOGI(TAG, "Protecting shift register pins");
-        mask_protect |= 1ULL << SHIFT_CLOCK_GPIO;
-        mask_protect |= 1ULL << PISO_LOAD_GPIO;
-        mask_protect |= 1ULL << PISO_DATA_GPIO;
-        mask_protect |= 1ULL << SIPO_LATCH_GPIO;
-        mask_protect |= 1ULL << SIPO_DATA_GPIO;
-    }
-
-    /*//zero-initialize the config structure.
-    gpio_config_t io_conf = {};
-    //disable interrupt
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //set as output mode
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    //bit mask of the pins that you want to set,e.g.GPIO18/19
-    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    //configure GPIO with the given settings
-    gpio_config(&io_conf);*/
 }
