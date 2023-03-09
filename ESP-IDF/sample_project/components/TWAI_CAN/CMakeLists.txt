@@ -12,6 +12,6 @@ endif()
 if(CONFIG_ENABLE_LCD_CONSOLE OR CONFIG_ENABLE_LCD_PLOT)
 endif()
 
-idf_component_register(SRCS "${srcs}"
+idf_component_register(SRCS "twai_can.c" "twai_can-dummy.c" "twai_can_half.c" "${srcs}"
                     INCLUDE_DIRS "."
                     REQUIRES driver puzzle)

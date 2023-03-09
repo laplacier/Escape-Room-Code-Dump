@@ -13,9 +13,8 @@
 
 static const twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 static const twai_timing_config_t t_config = TWAI_TIMING_CONFIG_125KBITS();
-static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(TX_GPIO_NUM, RX_GPIO_NUM, TWAI_MODE_NO_ACK);
-static const twai_message_t ping_resp = {.identifier = 0b11000000000 + ID_PROP, .data_length_code = 0,
-                                        .data = {0,0,0,0,0,0,0,0}, .self = 1};
+static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_GPIO, CAN_RX_GPIO, TWAI_MODE_NO_ACK);
+g_config.tx_queue_len = 0;
 
 QueueHandle_t ctrl_task_queue;
 QueueHandle_t tx_task_queue;
@@ -56,7 +55,6 @@ void twai_can_init(void){
 void ctrl_task(void *arg){
     ctrl_task_action_t ctrl_action;
     puzzle_task_action_t puzzle_action;
-    tx_task_action_t tx_action;
     static const char* TAG = "CAN_Controller";
     xSemaphoreGive(rx_task_sem); // Allow rx_task to begin receiving CAN messages
     for(;;){

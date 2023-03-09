@@ -11,6 +11,7 @@
 #include "puzzle.h"
 #include "twai_can.h"
 #include "sound.h"
+#include "shift_reg.h"
 
 SemaphoreHandle_t puzzle_task_sem;
 QueueHandle_t puzzle_task_queue;
@@ -95,13 +96,13 @@ void GPIO_Init(){
         mask_protect |= 1ULL << UART_TX_GPIO;
         mask_protect |= 1ULL << UART_RX_GPIO;
     }
-    if(CONFIG_ENABLE_SHIFT){
-        ESP_LOGI(TAG, "Protecting shift register pins");
-        mask_protect |= 1ULL << UART_TX_GPIO;
-        mask_protect |= 1ULL << UART_RX_GPIO;
-    }
     if(CONFIG_ENABLE_CAN){
         ESP_LOGI(TAG, "Protecting CAN pins");
+        mask_protect |= 1ULL << CAN_TX_GPIO;
+        mask_protect |= 1ULL << CAN_RX_GPIO;
+    }
+    if(CONFIG_ENABLE_SHIFT){
+        ESP_LOGI(TAG, "Protecting shift register pins");
         mask_protect |= 1ULL << SHIFT_CLOCK_GPIO;
         mask_protect |= 1ULL << PISO_LOAD_GPIO;
         mask_protect |= 1ULL << PISO_DATA_GPIO;
@@ -109,7 +110,7 @@ void GPIO_Init(){
         mask_protect |= 1ULL << SIPO_DATA_GPIO;
     }
 
-    //zero-initialize the config structure.
+    /*//zero-initialize the config structure.
     gpio_config_t io_conf = {};
     //disable interrupt
     io_conf.intr_type = GPIO_INTR_DISABLE;
@@ -122,5 +123,5 @@ void GPIO_Init(){
     //disable pull-up mode
     io_conf.pull_up_en = 0;
     //configure GPIO with the given settings
-    gpio_config(&io_conf);
+    gpio_config(&io_conf);*/
 }

@@ -66,7 +66,7 @@ void sendAudioCommand(uint8_t command, uint16_t parameter){
 
     //------------------- SEND INSTRUCTION --------------------------//
     uart_write_bytes(UART, instruction, 10); // Send the selected byte to the DFPlayer Mini via serial
-    vTaskDelay(10 / portTICK_PERIOD_MS);           // Wait for the DFPlayer Mini to process the instruction
+    vTaskDelay(100 / portTICK_PERIOD_MS);           // Wait for the DFPlayer Mini to process the instruction
 }
 
 void sound_task(void *arg){

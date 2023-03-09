@@ -2,8 +2,8 @@
 #define twai_can
 
 // GPIO Pin assignments
-#define CAN_TX_GPIO                     22 // ESP32 Tx Pin to CAN Pin
-#define CAN_RX_GPIO                     19 // ESP32 Rx Pin to CAN Pin
+#define CAN_TX_GPIO                     33 // ESP32 Tx Pin to CAN Pin
+#define CAN_RX_GPIO                     32 // ESP32 Rx Pin to CAN Pin
 
 // FreeRTOS task priorities
 #define CTRL_TASK_PRIO                  10 // Control_Task
