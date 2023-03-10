@@ -9,6 +9,9 @@
     "freertos.h": "c",
     "gpio_sig_map.h": "c",
     "esp_err.h": "c",
-    "sound.h": "c"
+    "sound.h": "c",
+    "random": "cpp",
+    "esp_rom_gpio.h": "c",
+    "twai_can.h": "c"
   }
 }

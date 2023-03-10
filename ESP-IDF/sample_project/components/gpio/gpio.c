@@ -5,6 +5,7 @@
 #include "freertos/semphr.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "soc.h"
 #include "driver/gpio.h"
 #include "puzzle.h"
 #include "twai_can.h"
@@ -44,7 +45,7 @@ extern uint8_t rx_payload[7];
 
 SemaphoreHandle_t gpio_task_sem;
 QueueHandle_t gpio_task_queue;
-uint64_t mask_protect = 0b1111111111111111111111111110000011110001000100000000111111001011; // Default DNU pins implemented
+uint64_t mask_protect = 0b1111111111111111111111110110000011110001000100000000111111001011; // Default DNU pins implemented
 
 void GPIO_Init(){
     static const char* TAG = "GPIO";
@@ -90,45 +91,74 @@ void GPIO_Init(){
 
 void gpio_task(void *arg){
     gpio_task_action_t gpio_action;
-    uint64_t gpio_mask = mask_protected; // Mask applied to select GPIO mins to modify
-    uint64_t gpio_step = 0;              // Temp variable to process intermediate actions in each command
     uint64_t gpio_states = 0;            // Initial state of pins
+    uint64_t gpio_mask = mask_protected; // Mask applied to select GPIO mins to modify
     while(1){
         xSemaphoreTake(gpio_task_sem, portMAX_DELAY); // Blocked from executing until puzzle_task gives a semaphore
         xQueueReceive(gpio_task_queue, &gpio_action, pdMS_TO_TICKS(10)); // Pull task from queue
         switch(gpio_action){
             case SET_MASK:
                 gpio_mask = 0;
-                gpio_step = 0;
-                for(int i=0; i<6; i++){
-                    gpio_step = rx_payload[i+1]; // Copy mask byte
-                    gpio_step << (i * 8); // Shift byte to correct position
-                    gpio_mask |= gpio_step; // Insert mask byte into mask
+                for(int i=0; i<5; i++){
+                    gpio_mask |= rx_payload[i+1]; // Copy mask byte
+                    BYTESHIFTL(gpio_mask,1); // Shift byte to correct position
                 }
-                gpio_mask &= ~(mask_protected); // Eliminate any pins from other components
+                gpio_mask &= ~(mask_protected); // Prevent modifying pins from other components
                 ESP_LOGI(TAG, "Set mask");
                 break;
             case SET_STATES:
-                gpio_step = 0;
-                gpio_states &= ~(gpio_mask); // Initialize setting states by clearing masked pin states
-                for(int i=0; i<6; i++){
-                    gpio_step = rx_payload[i+1]; // Copy a byte of pins to modify
-                    gpio_step << (i * 8);        // Shift byte into correct position
-                    gpio_step &= ~(gpio_mask);   // Eliminate unmasked pins
-                    gpio_states |= gpio_step;    // Apply states to pins
+                gpio_states = 0;
+                for(int i=0; i<5; i++){
+                    gpio_states |= rx_payload[i+1]; // Copy a byte of pins to modify
+                    BYTESHIFTL(gpio_states,1);      // Shift byte into correct position
+                }
+                for(int i=0; i<34; i++){ // GPIO 34+ cannot be output, ignore
+                    if(gpio_mask & BIT(i)){ // If this pin is being set...
+                        gpio_set_level((gpio_num_t)i, ((gpio_states >> i) & 1U)); // Set the state of the pin
+                    }
                 }
                 ESP_LOGI(TAG, "Set output states");
                 break;
             case SEND_STATES:                                      // Command: Send states to CAN_TX payload
-                xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from executing until tx_payload is available
-                gpio_step = gpio_states;
-                for(int i=0; i<6; i++){
-                    tx_payload[i+2] = (uint8_t)(gpio_step & 0xFF); // Transfer the current state byte to the CAN_TX payload
-                    gpio_step >> 8;                                // Remove the transferred byte
+                gpio_states = 0;
+                for(int i=0; i<39; i++){ // Snapshot state of all GPIO pins
+                    bitWrite(gpio_states,i,gpio_get_state(i));
+                }
+                xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
+                for(int i=0; i<5; i++){
+                    tx_payload[i+2] = READBYTE(gpio_states,i); // Transfer the current state byte to the CAN_TX payload
                 }
                 break;
         }
         xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
         //vTaskDelay(portMAX_DELAY / portTICK_PERIOD_MS); // Halt forever
     }
+}
+
+bool gpio_get_state(uint8_t pin){
+    bool state;
+    if(pin > 0 && pin < 32){ // GPIO 0-31
+        if (GPIO_REG_READ(GPIO_ENABLE_REG) & BIT(pin)){
+            //pin is output - read the GPIO_OUT_REG register
+            state = (GPIO_REG_READ(GPIO_OUT_REG) >> pin) & 1U;
+        }
+        else{
+            //pin is input - read the GPIO_IN_REG register
+            state = (GPIO_REG_READ(GPIO_IN_REG) >> pin) & 1U;
+        }
+    }
+    else if(pin > 32 && pin < 40){ // GPIO 32-39
+        if (GPIO_REG_READ(GPIO_ENABLE1_REG) & BIT(pin)){
+            //pin is output - read the GPIO_OUT_REG register
+            state = (GPIO_REG_READ(GPIO_OUT1_REG) >> pin) & 1U;
+        }
+        else{
+            //pin is input - read the GPIO_IN_REG register
+            state = (GPIO_REG_READ(GPIO_IN1_REG) >> pin) & 1U;
+        }
+    }
+    else{
+        state = 0;
+    }
+    return state;
 }
