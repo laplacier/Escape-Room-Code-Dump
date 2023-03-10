@@ -31,7 +31,7 @@ allow smooth, continuous operation. If the inherited prop returns and sends a pi
 longer be mimic'd.
 
 ## API reference
-The following functions are included in [puzzle](puzzle) to utilize this component:
+The following functions are included in [puzzle](../puzzle) to utilize this component:
 
 **bool CAN_Receive(uint32_t delay)**
 
