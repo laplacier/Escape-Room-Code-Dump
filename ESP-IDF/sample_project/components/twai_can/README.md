@@ -8,22 +8,24 @@ Utilizes the built in twai_can functions of the ESP32 CAN controller to deliver 
 This component can be configured by opening the ESP-IDF Configuration editor and navigating to "Prop CAN Options".
 
 ## Configuration Options
-**Enable CAN** - TRUE by default. This will allow the prop to use CAN, which is the primary method for communicating between props. If CAN is disabled, the prop's default game stage will be 1 (Active) instead of 0 (Idle/Disabled) to prevent the prop from being unable to activate. You will need to be sure to develop your own method to reset the puzzle upon completion if CAN is disabled.
+### Enable CAN
+TRUE by default. This will allow the prop to use CAN, which is the primary method for communicating between props. If CAN is disabled, the prop's default game stage will be 1 (Active) instead of 0 (Idle/Disabled) to prevent the prop from being unable to activate. You will need to be sure to develop your own method to reset the puzzle upon completion if CAN is disabled.
 
-**CAN_TX GPIO Pin** - GPIO 33 by default. Can be any unused IO capable pin.
+### CAN_TX GPIO Pin
+GPIO 33 by default. Can be any unused IO capable pin.
 
-**CAN_RX GPIO Pin** - GPIO 32 by default. Can be any unused IO capable pin.
+### CAN_RX GPIO Pin
+GPIO 32 by default. Can be any unused IO capable pin.
 
-**CAN ID** - 1 by default. 0 is reserved for the game flow controller. Can assign any ID from 1 to 255. Each prop must use a unique ID to prevent conflicts on the CAN bus. The lowest ID on the CAN bus will have the highest priority when sending the same type of message.
+### CAN ID
+1 by default. 0 is reserved for the game flow controller. Can assign any ID from 1 to 255. Each prop must use a unique ID to prevent conflicts on the CAN bus. The lowest ID on the CAN bus will have the highest priority when sending the same type of message.
 
-**CAN operation mode**
-    
+### CAN operation mode   
 Receive and Transmit - Normal operation. Can send and receive messages on the CAN bus.
     
 Listen only - Can receive messages on the CAN bus and ACK them, but will not send messages or respond to message requests.
 
-**Enable prop inheritance**
-
+### Enable prop inheritance
 Allows the prop to participate in prop inheritance. When a device is sent a ping request multiple times without a ping reponse, any prop with this setting enabled will attempt to request to inherit the missing prop. If
 the request is successful, the prop will "inherit" the send/receive responsibilities of the missing prop and
 mimic their ID. This is useful for props that unexpectedly fail or disconnect from the CAN bus during a game to
@@ -33,8 +35,7 @@ longer be mimic'd.
 ## API reference
 The following functions are included in [puzzle](../puzzle) to utilize this component:
 
-**bool CAN_Receive(uint32_t delay)**
-
+### bool CAN_Receive(uint32_t delay)
 Checks a queue which populates with messages sent to the prop ID for "delay" milliseconds converted from nonblocking FreeRTOS task ticks. The queue can contain an integer value which corresponds to the following messages:
 
 ```
@@ -54,14 +55,12 @@ from sending additional commands until the puzzle component calls and resolves
 the command in this function. If **rx_payload[]** is busy being written to by 
 the CAN component, this function will be blocked from executing and return false.
 
-**void CAN_Send_State(uint8_t target_id)**
-
+### void CAN_Send_State(uint8_t target_id)
 Function called when replying to a ping request. Pushes the state of all of the 
 active components in the prop through the CAN bus to prop with target_id. Avoid
 firing this too in rapid succession to keep the CAN bus decongested.
 
-**bool CAN_Send_Command(uint8_t target_id, uint8_t command)**
-
+### bool CAN_Send_Command(uint8_t target_id, uint8_t command)
 Sends a message on the CAN bus with the inputted command to the target_id of the 
 prop. The same messages that can be received are the messages that can be sent. 
 However, a payload corresponding to the command must be sent with the command. 

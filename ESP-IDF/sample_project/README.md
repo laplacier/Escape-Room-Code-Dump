@@ -15,15 +15,15 @@ the GPIO pins, and enable/disable components as necessary.
 Each component of the prop is outlined below. Examples on how to use each component can be found by clicking 
 on the component.
 
-[puzzle](puzzle) - The primary puzzle logic. Controls the logical flow of the prop. Edit this component when designing a prop.
+[puzzle](/components/puzzle) - The primary puzzle logic. Controls the logical flow of the prop. Edit this component when designing a prop.
 
 [main](main) - The main script. Runs first. Initializes every component then removes itself from memory.
 
-[twai_can](twai_can) - The CAN component. Handles communication to and from other props.
+[twai_can](/components/twai_can) - The CAN component. Handles communication to and from other props.
 
-[sound](sound) - The sound component. Plays sound clips stored in the DFPlayer Mini when prompted.
+[sound](/components/sound) - The sound component. Plays sound clips stored in the DFPlayer Mini when prompted.
 
-[gpio](gpio) - The GPIO component. Sets, reads, and writes basic GPIO implementations such as relays, buttons, and LEDs. 
+[gpio](/components/gpio) - The GPIO component. Sets, reads, and writes basic GPIO implementations such as relays, buttons, and LEDs. 
 Complex GPIO instructions are handled outside of this component.
 
-[shift_reg](shift_reg) - The shift register component. Handles reading SN74HC165n registers and writing to SN74HC595n registers.
+[shift_reg](/components/shift_reg) - The shift register component. Handles reading SN74HC165n registers and writing to SN74HC595n registers.
