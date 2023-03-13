@@ -2,7 +2,7 @@
   "C_Cpp.intelliSenseEngine": "Tag Parser",
   "idf.adapterTargetName": "esp32",
   "terminal.explorerKind": "external",
-  "idf.portWin": "COM4",
+  "idf.portWin": "COM3",
   "idf.flashType": "UART",
   "files.associations": {
     "stdio.h": "c",
@@ -12,6 +12,23 @@
     "sound.h": "c",
     "random": "cpp",
     "esp_rom_gpio.h": "c",
-    "twai_can.h": "c"
+    "twai_can.h": "c",
+    "shift_reg.h": "c",
+    "compare": "c",
+    "format": "c",
+    "functional": "c",
+    "future": "c",
+    "memory": "c",
+    "ratio": "c",
+    "regex": "c",
+    "tuple": "c",
+    "type_traits": "c",
+    "utility": "c",
+    "xmemory": "c",
+    "xstring": "c",
+    "xtr1common": "c",
+    "xutility": "c",
+    "esp_rom_sys.h": "c",
+    "vector": "c"
   }
 }

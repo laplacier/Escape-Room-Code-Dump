@@ -40,11 +40,12 @@ Checks a queue which populates with messages sent to the prop ID for "delay" mil
 
 ```
 0 - Change state
-1 - GPIO mask of output pins to set
-2 - GPIO pin states to set
+1 - GPIO mask of output pins
+2 - GPIO pin states
 3 - Play a sound file
-4 - Shift register mask of output pins to set
-5 - Shift register pin states to set
+4 - Shift register mask of SIPO pins
+5 - Shift register SIPO pin states
+6 - Shift register PISO pin states
 255 - Ping request
 ```
 
@@ -58,7 +59,7 @@ the CAN component, this function will be blocked from executing and return false
 ### void CAN_Send_State(uint8_t target_id)
 Function called when replying to a ping request. Pushes the state of all of the 
 active components in the prop through the CAN bus to prop with target_id. Avoid
-firing this too in rapid succession to keep the CAN bus decongested.
+firing this too frequently to keep the CAN bus decongested.
 
 ### bool CAN_Send_Command(uint8_t target_id, uint8_t command)
 Sends a message on the CAN bus with the inputted command to the target_id of the 

@@ -14,7 +14,7 @@ SemaphoreHandle_t rx_task_sem;
 SemaphoreHandle_t rx_payload_sem;
 SemaphoreHandle_t tx_task_sem;
 
-uint8_t rx_payload[7] = {0,0,0,0,0,0,0};
+uint8_t rx_payload[8] = {0,0,0,0,0,0,0,0};
 
 void ctrl_task(void *arg){
     while(1)

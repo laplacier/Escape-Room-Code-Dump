@@ -17,11 +17,13 @@
 #include "puzzle.h"
 #include "twai_can.h"
 #include "sound.h"
+#include "gpio_prop.h"
 
 void app_main(void){
     static const char* TAG = "Main";
     puzzle_init();
     sound_init();
     twai_can_init();
+    GPIO_Init();
     ESP_LOGI(TAG, "All setups complete. Destroying main...");
 }

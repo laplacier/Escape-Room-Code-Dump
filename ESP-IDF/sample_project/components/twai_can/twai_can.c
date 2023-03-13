@@ -23,11 +23,13 @@ SemaphoreHandle_t ctrl_task_sem;
 SemaphoreHandle_t rx_task_sem;
 SemaphoreHandle_t rx_payload_sem;
 SemaphoreHandle_t tx_task_sem;
+SemaphoreHandle_t tx_payload_sem;
 
 extern SemaphoreHandle_t puzzle_task_sem;
 extern QueueHandle_t puzzle_task_queue;
 
-uint8_t rx_payload[7];
+uint8_t rx_payload[8];
+uint8_t tx_payload[8];
 
 void twai_can_init(void){
     tx_task_queue = xQueueCreate(1, sizeof(tx_task_action_t));
@@ -35,7 +37,8 @@ void twai_can_init(void){
     ctrl_task_sem = xSemaphoreCreateCounting( 10, 0 );
     rx_task_sem = xSemaphoreCreateBinary();
     tx_task_sem = xSemaphoreCreateCounting( 10, 0 );
-    rx_payload_sem = xSemaphoreCreateBinary(); // Allows rx_task to write to the data payload
+    rx_payload_sem = xSemaphoreCreateBinary(); // Allows rx_task to write to the rx data payload
+    tx_payload_sem = xSemaphoreCreateBinary(); // Allows puzzle_task to write the tx data payload
 
     xTaskCreatePinnedToCore(tx_task, "CAN_Tx", 4096, NULL, TX_TASK_PRIO, NULL, tskNO_AFFINITY);
     xTaskCreatePinnedToCore(ctrl_task, "CAN_Controller", 4096, NULL, CTRL_TASK_PRIO, NULL, tskNO_AFFINITY);
@@ -151,14 +154,15 @@ void tx_task(void *arg){
             default:
                 ESP_LOGI(TAG, "Unknown action received: %d",action);
         }
+        xSemaphoreGive(tx_payload_sem);
     }
 }
 
 void fake_bus_task(void *arg){
-    twai_message_t gpio_mask = {.identifier = 0b00100000000, .data_length_code = 8,
-                                        .data = {0x01,0x01,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, .self = 1};
-    twai_message_t gpio_states = {.identifier = 0b00100000000, .data_length_code = 8,
-                                        .data = {0x01,0x02,0x00,0x00,0x00,0x00,0x00,0x00}, .self = 1};
+    twai_message_t gpio_mask = {.identifier = 0b00100000000, .data_length_code = 7,
+                                        .data = {0x01,0x01,0xFF,0xFF,0xFF,0xFF,0xFF}, .self = 1};
+    twai_message_t gpio_states = {.identifier = 0b00100000000, .data_length_code = 7,
+                                        .data = {0x01,0x02,0x00,0x00,0x00,0x00,0x00}, .self = 1};
     twai_message_t play_sound = {.identifier = 0b00100000000, .data_length_code = 3,
                                         .data = {0x01,0x03,0x01}, .self = 1};
     static const char* TAG = "CAN_Fake_Bus";
@@ -166,7 +170,7 @@ void fake_bus_task(void *arg){
     for(;;){
         // Fake ping request
         //twai_transmit(&ping_req, portMAX_DELAY);
-        //vTaskDelay(pdMS_TO_TICKS(5000)); // Simulating no messages for 5 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000)); // Simulating no messages for 5 seconds
         //Fake GPIO change
         twai_transmit(&gpio_mask, portMAX_DELAY);
         twai_transmit(&gpio_states, portMAX_DELAY);
@@ -176,6 +180,6 @@ void fake_bus_task(void *arg){
         vTaskDelay(pdMS_TO_TICKS(5000)); // Simulating no messages for 5 seconds
         // Fake sound command
         twai_transmit(&play_sound, portMAX_DELAY);
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Simulating no messages for 5 seconds
+        //vTaskDelay(pdMS_TO_TICKS(5000)); // Simulating no messages for 5 seconds
     }
 }
