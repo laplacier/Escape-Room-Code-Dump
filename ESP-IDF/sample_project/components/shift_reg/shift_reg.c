@@ -19,30 +19,85 @@ extern SemaphoreHandle_t rx_payload_sem;
 extern uint8_t tx_payload[8];
 extern uint8_t rx_payload[8];
 
-TaskHandle_t sipo_task_handle;
-SemaphoreHandle_t sipo_task_sem;
-QueueHandle_t sipo_task_queue;
+TaskHandle_t shift_task_handle;
+SemaphoreHandle_t shift_task_sem;
+QueueHandle_t shift_task_queue;
 
-uint8_t dataOut[NUM_SIPO]; // Data sent to SIPO registers
-uint8_t maskSIPO[NUM_SIPO];
+static uint8_t dataOut[NUM_SIPO]; // Data sent to SIPO registers
+static uint8_t maskSIPO[NUM_SIPO];
 uint8_t dataIn[NUM_PISO]; // Data read from PISO registers
 
-void shift_init(void){   
+static void piso_update(void);
+static void sipo_update(void);
+static void pulsePin(uint8_t pinName, uint32_t pulseTime);
+static void shift_task(void *arg);
+
+void shift_init(void){
+    uint64_t mask = 0;
+    for(int i=0; i<NUM_SIPO; i++){
+        dataOut[i] = 0;
+    }
+    gpio_config_t io_conf = {};
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    
+    // Outputs
+    io_conf.mode = GPIO_MODE_INPUT_OUTPUT; // We want to simplify sending pin states to other props, so in/out required
+    mask |= 1ULL << SHIFT_CLOCK_GPIO;
+    mask |= 1ULL << PISO_LOAD_GPIO;
+    mask |= 1ULL << SIPO_LATCH_GPIO;
+    mask |= 1ULL << SIPO_DATA_GPIO;
+    io_conf.pin_bit_mask = mask;
+    gpio_config(&io_conf);
+
+    // Inputs
+    mask = 0;
+    io_conf.mode = GPIO_MODE_INPUT;
+    mask |= 1ULL << PISO_DATA_GPIO;
+    io_conf.pin_bit_mask = mask;
+    gpio_config(&io_conf);
+
     // Create shift register tasks, queues, semaphores
-    sipo_task_queue = xQueueCreate(10, sizeof(sipo_task_action_t));
-    sipo_task_sem = xSemaphoreCreateCounting( 10, 0 );
-    xTaskCreatePinnedToCore(sipo_task, "SIPO", 2048, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
+    shift_task_queue = xQueueCreate(10, sizeof(shift_task_action_t));
+    shift_task_sem = xSemaphoreCreateCounting( 10, 0 );
+    xTaskCreatePinnedToCore(shift_task, "SIPO", 2048, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
     ESP_LOGI("Shift_Reg", "Setup complete");
 }
 
-void pulsePin(uint8_t pinName, uint32_t pulseTime){
+// User functions
+bool shift_read(uint8_t pin){
+    uint8_t piso_num = pin >> 3;
+    pin %= 8;
+    bool val = bitRead(dataIn[piso_num], pin);
+    return val;
+}
+
+void shift_write(uint8_t pin, bool val){
+    uint8_t sipo_num = pin >> 3;
+    if(sipo_num > NUM_SIPO){
+        ESP_LOGE("Shift_Reg", "Attempted to write to SIPO#%d, does not exist",sipo_num);
+    }
+    else{
+        pin %= 8;
+        bitWrite(dataOut[sipo_num], pin, val);
+    }
+}
+
+void shift_show(void){
+    shift_task_action_t shift_action = SET_SIPO_STATES;
+    xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
+    xSemaphoreGive(shift_task_sem);
+}
+
+static void pulsePin(uint8_t pinName, uint32_t pulseTime){
   gpio_write(pinName, 0);
   esp_rom_delay_us(pulseTime);
   gpio_write(pinName, 1);
   esp_rom_delay_us(pulseTime);
 }
 
-void piso_update(void){
+static void piso_update(void){
     gpio_write(SHIFT_CLOCK_GPIO, 1);               // Data is shifted when clock pin changes from LOW to HIGH, so ensure it starts HIGH
     pulsePin(PISO_LOAD_GPIO, 5);                             // Pulse load pin to snapshot all PISO pin states and start at the beginning
     for(int i=0; i<NUM_PISO; i++){                     // For each PISO register...
@@ -53,17 +108,7 @@ void piso_update(void){
     }
 }
 
-void sipo_write(uint8_t piso_num, uint8_t pin, bool val){
-    if(piso_num > NUM_PISO){
-        ESP_LOGE("Shift_Reg", "Attempted to write to PISO that does not exist");
-    }
-    else{
-        bitWrite(dataOut[piso_num], pin, val);
-        sipo_update();
-    }
-}
-
-void sipo_update(void){
+static void sipo_update(void){
     for(int i=NUM_SIPO-1; i>=0; i--){
         for(int j=7; j>=0; j--){
             gpio_write(SIPO_DATA_GPIO, bitRead(dataOut[i], j));
@@ -71,30 +116,33 @@ void sipo_update(void){
         }
     }
     pulsePin(SIPO_LATCH_GPIO, 5);
+    ESP_LOGI("sipo","%d",dataOut[0]);
 }
 
-void sipo_task(void *arg){
-    sipo_task_action_t sipo_action;
-    static const char* TAG = "Shift_SIPO";
+static void shift_task(void *arg){
+    shift_task_action_t shift_action;
+    static const char* TAG = "Shift_Reg";
     while(1){
-        if(xSemaphoreTake(sipo_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
-            xQueueReceive(sipo_task_queue, &sipo_action, portMAX_DELAY); // Pull task from queue
-            switch(sipo_action){
-                case SET_SIPO_MASK:
+        if(xSemaphoreTake(shift_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
+            xQueueReceive(shift_task_queue, &shift_action, portMAX_DELAY); // Pull task from queue
+            switch(shift_action){
+                case RECEIVE_SIPO_MASK:
                     for(int i=0; i<NUM_SIPO; i++){
                         maskSIPO[i] = rx_payload[i+1]; // Copy byte of mask to now empty byte in var
                     }
-                    ESP_LOGI(TAG, "Set mask");
                     xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+                case SET_SIPO_MASK:
+                    ESP_LOGI(TAG, "Set mask");
                     break;
-                case SET_SIPO_STATES:
+                case RECEIVE_SIPO_STATES:
                     for(int i=0; i<NUM_SIPO; i++){
                         dataOut[i] &= ~(maskSIPO[i]);
                         dataOut[i] |= (rx_payload[i+1] & maskSIPO[i]);
                     }
+                    xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+                case SET_SIPO_STATES:
                     sipo_update();
                     ESP_LOGI(TAG, "Set output states");
-                    xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
                     break;
                 case SEND_SIPO_STATES:                                      // Command: Send states to CAN_TX payload
                     xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
@@ -112,6 +160,6 @@ void sipo_task(void *arg){
                     break;
             }
         }
-        
+        piso_update();
     }
 }

@@ -14,6 +14,11 @@
 #include "shift_reg.h"
 #include "gpio_prop.h"
 
+//-----------------Prototypes------------------//
+static void puzzle_task(void *arg);
+static bool CAN_Receive(uint32_t delay);
+static void puzzle_main(void *arg);
+
 //---------External Global Variables-----------//
 
 //twai_can
@@ -30,46 +35,62 @@ extern TaskHandle_t sound_task_handle;
 extern QueueHandle_t gpio_task_queue;
 extern SemaphoreHandle_t gpio_task_sem;
 
+//shift_reg
+extern uint8_t dataIn[NUM_PISO]; // Data read from PISO registers
+
 //--------------Global Variables---------------//
 SemaphoreHandle_t puzzle_task_sem;
 QueueHandle_t puzzle_task_queue;
 uint8_t game_state = 0;
+uint8_t piso_old[NUM_PISO];
 
+/*
+ *
+ */
+static void puzzle_loop(void *arg){
+    // Setup
+    static const char* TAG = "User";
+    for(int i=0; i<NUM_PISO; i++){
+        piso_old[i] = dataIn[i];
+    }
+
+    // Loop forever
+    for(;;){
+        for(int i=0; i<8; i++){
+            if(bitRead(dataIn[0],i) != bitRead(piso_old[0],i)){
+                ESP_LOGI(TAG, "PISO#0 Pin %d: %d",i,bitRead(dataIn[0],i));
+            }
+        }
+        piso_old[0] = dataIn[0];
+
+        shift_write(1,1);
+        shift_show();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        shift_write(1,0);
+        shift_show();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/*
+ * Helper functions - DO NOT EDIT
+ * Functions required for flow control between other components
+ */
 void puzzle_init(void){
     puzzle_task_queue = xQueueCreate(1, sizeof(puzzle_task_action_t));
     puzzle_task_sem = xSemaphoreCreateCounting( 10, 0 );
     xTaskCreatePinnedToCore(puzzle_task, "Puzzle", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
-    gpio_mode(27,INPUT_PULLUP,0);
+    xTaskCreatePinnedToCore(puzzle_loop, "User", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
     ESP_LOGI("Puzzle", "Setup complete");
 }
 
-void puzzle_task(void *arg){
-    static const char* TAG = "Puzzle";
-    bool switch_state = 1;
-    bool switch_old = 1;
-    /*struct state {
-        uint8_t val;
-        const char *msg;
-    };
-    struct state states[] = {
-        {0x00, "Idle/Inactive"},
-        {0x01, "Stage 1"},
-        {0x02, "Stage 2"},
-        {0xFE, "Reset"},
-        {0xFF, "Solved"}
-    };*/
+static void puzzle_task(void *arg){
     for(;;){
         CAN_Receive(10);
-        // The actual puzzle goes below
-        switch_state = gpio_read(27);
-        if(switch_state != switch_old){
-            ESP_LOGI(TAG, "GPIO 27 %d", switch_state);
-            switch_old = switch_state;
-        }
     }
 }
 
-bool CAN_Receive(uint32_t delay){
+static bool CAN_Receive(uint32_t delay){
     static const char* TAG = "Puzzle";
     static const char* cmd[4]= {"STATE","GPIO_MASK","GPIO","PLAY_SOUND"};
     puzzle_task_action_t puzzle_action;

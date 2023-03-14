@@ -10,7 +10,4 @@ typedef enum {
 #define GENERIC_TASK_PRIO               1  // Any unspecified task
 
 void puzzle_init(void);
-void puzzle_task(void *arg);
-bool CAN_Receive(uint32_t delay);
-
 #endif

@@ -136,7 +136,7 @@ void gpio_mode(uint8_t pin, gpio_mode_wrapper_t mode, gpio_interrupt_t type){
     switch(mode){
         case OUTPUT:
             io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_INPUT_OUTPUT;
+            io_conf.mode = GPIO_MODE_INPUT_OUTPUT; // We want to simplify sending pin states, so in/out required
             io_conf.pull_down_en = 0;
             io_conf.pull_up_en = 0;
             break;
