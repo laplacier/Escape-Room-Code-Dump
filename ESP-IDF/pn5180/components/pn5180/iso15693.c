@@ -17,9 +17,15 @@
 // Lesser General Public License for more details.
 //
 //#define DEBUG 1
-
+#include <stdio.h>
+#include <stdlib.h>
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/spi_master.h"
 #include "iso15693.h"
 
+#ifdef FALSE
 PN5180ISO15693::PN5180ISO15693(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi) 
               : PN5180(SSpin, BUSYpin, RSTpin, spi) {
 }
@@ -630,3 +636,4 @@ const __FlashStringHelper *PN5180ISO15693::strerror(ISO15693ErrorCode errno) {
       else return F("Undefined error code in ISO15693!");
   }
 }
+#endif

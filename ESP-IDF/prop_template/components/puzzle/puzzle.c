@@ -47,7 +47,7 @@ uint8_t piso_old[NUM_PISO];
 /*
  *
  */
-static void puzzle_loop(void *arg){
+static void puzzle_main(void *arg){
     // Setup
     static const char* TAG = "User";
     for(int i=0; i<NUM_PISO; i++){
@@ -80,7 +80,7 @@ void puzzle_init(void){
     puzzle_task_queue = xQueueCreate(1, sizeof(puzzle_task_action_t));
     puzzle_task_sem = xSemaphoreCreateCounting( 10, 0 );
     xTaskCreatePinnedToCore(puzzle_task, "Puzzle", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
-    xTaskCreatePinnedToCore(puzzle_loop, "User", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(puzzle_main, "User", 4096, NULL, PUZZLE_TASK_PRIO, NULL, tskNO_AFFINITY);
     ESP_LOGI("Puzzle", "Setup complete");
 }
 

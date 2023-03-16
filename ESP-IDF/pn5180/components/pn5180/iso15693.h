@@ -21,7 +21,7 @@
 
 #include "pn5180.h"
 
-enum ISO15693ErrorCode {
+typedef enum {
   EC_NO_CARD = -1,
   ISO15693_EC_OK = 0,
   ISO15693_EC_NOT_SUPPORTED = 0x01,
@@ -34,37 +34,21 @@ enum ISO15693ErrorCode {
   ISO15693_EC_BLOCK_NOT_PROGRAMMED = 0x13,
   ISO15693_EC_BLOCK_NOT_LOCKED = 0x14,
   ISO15693_EC_CUSTOM_CMD_ERROR = 0xA0
-};
+} ISO15693ErrorCode;
 
-class PN5180ISO15693 : public PN5180 {
-
-public:
-  PN5180ISO15693(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi=SPI);
-  
-private:
-  ISO15693ErrorCode issueISO15693Command(uint8_t *cmd, uint8_t cmdLen, uint8_t **resultPtr);
-public:
-  ISO15693ErrorCode getInventory(uint8_t *uid);
-
-  ISO15693ErrorCode readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
-  ISO15693ErrorCode writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
-
-  ISO15693ErrorCode getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks);
-   
-  // ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
-  ISO15693ErrorCode getRandomNumber(uint8_t *randomData);
-  ISO15693ErrorCode setPassword(uint8_t identifier, uint8_t *password, uint8_t *random);
-  ISO15693ErrorCode enablePrivacy(uint8_t *password, uint8_t *random);
-  // helpers
-  ISO15693ErrorCode enablePrivacyMode(uint8_t *password);
-  ISO15693ErrorCode disablePrivacyMode(uint8_t *password);
-  /*
-   * Helper functions
-   */
-public:   
-  bool setupRF();
-  const __FlashStringHelper *strerror(ISO15693ErrorCode errno);
-    
-};
+ISO15693ErrorCode ISO15693Command(uint8_t *cmd, uint8_t cmdLen, uint8_t **resultPtr);
+ISO15693ErrorCode getInventory(uint8_t *uid);
+ISO15693ErrorCode readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
+ISO15693ErrorCode writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
+ISO15693ErrorCode getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks);
+// ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
+ISO15693ErrorCode getRandomNumber(uint8_t *randomData);
+ISO15693ErrorCode setPassword(uint8_t identifier, uint8_t *password, uint8_t *random);
+ISO15693ErrorCode enablePrivacy(uint8_t *password, uint8_t *random);
+// helpers
+ISO15693ErrorCode enablePrivacyMode(uint8_t *password);
+ISO15693ErrorCode disablePrivacyMode(uint8_t *password); 
+bool setupRF();
+//const __FlashStringHelper *strerror(ISO15693ErrorCode errno);  
 
 #endif /* PN5180ISO15693_H */

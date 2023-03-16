@@ -40,11 +40,11 @@ Shows the changes on the output shift register pins written via **shift_write()*
 
 ## Example usage:
 ```
-if(shift_read(5)){    // If input register 0, pin 5 is HIGH...
-    shift.write(3,1); // Write HIGH to output shift register 0, pin 3
+if(shift_read(12)){   // If input shift register 1, pin 4 is HIGH...
+    shift_write(3,1); // Write HIGH to output shift register 0, pin 3
 }
 else{                 // Otherwise...
-    shift.write(3,0); // Write LOW to output shift register 0, pin 3
+    shift_write(3,0); // Write LOW to output shift register 0, pin 3
 }
 shift_show();         // Show the state changes on output shift registers
 ```

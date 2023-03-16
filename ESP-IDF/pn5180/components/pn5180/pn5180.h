@@ -46,7 +46,7 @@
 #define EEPROM_VERSION      (0x14)
 #define IRQ_PIN_CONFIG      (0x1A)
 
-enum PN5180TransceiveStat {
+typedef enum {
   PN5180_TS_Idle = 0,
   PN5180_TS_WaitTransmit = 1,
   PN5180_TS_Transmitting = 2,
@@ -55,7 +55,7 @@ enum PN5180TransceiveStat {
   PN5180_TS_Receiving = 5,
   PN5180_TS_LoopBack = 6,
   PN5180_TS_RESERVED = 7
-};
+} PN5180TransceiveStat;
 
 // PN5180 IRQ_STATUS
 #define RX_IRQ_STAT         	(1<<0)  // End of RF receiption IRQ
@@ -69,76 +69,55 @@ enum PN5180TransceiveStat {
 #define GENERAL_ERROR_IRQ_STAT 	(1<<17) // General error IRQ
 #define LPCD_IRQ_STAT 			(1<<19) // LPCD Detection IRQ
 
-class PN5180 {
-private:
-  uint8_t PN5180_NSS;   // active low
-  uint8_t PN5180_BUSY;
-  uint8_t PN5180_RST;
-  SPIClass& PN5180_SPI;
+void pn5180_begin();
+void pn5180_end();
 
-  SPISettings SPI_SETTINGS;
-  static uint8_t readBuffer[508];
+//PN5180 direct commands with host interface
+/* cmd 0x00 */
+bool pn5180_writeRegister(uint8_t reg, uint32_t value);
+/* cmd 0x01 */
+bool pn5180_writeRegisterWithOrMask(uint8_t addr, uint32_t mask);
+/* cmd 0x02 */
+bool pn5180_writeRegisterWithAndMask(uint8_t addr, uint32_t mask);
 
-public:
-  PN5180(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi=SPI);
+/* cmd 0x04 */
+bool pn5180_readRegister(uint8_t reg, uint32_t *value);
 
-  void begin();
-  void end();
+/* cmd 0x06 */
+bool pn5180_writeEEprom(uint8_t addr, uint8_t *buffer, uint8_t len);
+/* cmd 0x07 */
+bool pn5180_readEEprom(uint8_t addr, uint8_t *buffer, int len);
 
-  /*
-   * PN5180 direct commands with host interface
-   */
-public:
-  /* cmd 0x00 */
-  bool writeRegister(uint8_t reg, uint32_t value);
-  /* cmd 0x01 */
-  bool writeRegisterWithOrMask(uint8_t addr, uint32_t mask);
-  /* cmd 0x02 */
-  bool writeRegisterWithAndMask(uint8_t addr, uint32_t mask);
+/* cmd 0x09 */
+bool pn5180_sendData(uint8_t *data, int len, uint8_t validBits);
+/* cmd 0x0a */
+bool pn5180_readData(uint8_t len, uint8_t *buffer);
+/* prepare LPCD registers */
+bool pn5180_prepareLPCD();
+/* cmd 0x0B */
+bool pn5180_switchToLPCD(uint16_t wakeupCounterInMs);
+/* cmd 0x11 */
+bool pn5180_loadRFConfig(uint8_t txConf, uint8_t rxConf);
 
-  /* cmd 0x04 */
-  bool readRegister(uint8_t reg, uint32_t *value);
+/* cmd 0x16 */
+bool pn5180_setRF_on();
+/* cmd 0x17 */
+bool pn5180_setRF_off();
 
-  /* cmd 0x06 */
-  bool writeEEprom(uint8_t addr, uint8_t *buffer, uint8_t len);
-  /* cmd 0x07 */
-  bool readEEprom(uint8_t addr, uint8_t *buffer, int len);
+/*
+  * Helper functions
+  */
+void pn5180_reset();
 
-  /* cmd 0x09 */
-  bool sendData(uint8_t *data, int len, uint8_t validBits = 0);
-  /* cmd 0x0a */
-  uint8_t * readData(int len);
-  bool readData(uint8_t len, uint8_t *buffer);
-  /* prepare LPCD registers */
-  bool prepareLPCD();
-  /* cmd 0x0B */
-  bool switchToLPCD(uint16_t wakeupCounterInMs);
-  /* cmd 0x11 */
-  bool loadRFConfig(uint8_t txConf, uint8_t rxConf);
+uint8_t commandTimeout = 50;
+uint32_t pn5180_getIRQStatus();
+bool pn5180_clearIRQStatus(uint32_t irqMask);
 
-  /* cmd 0x16 */
-  bool setRF_on();
-  /* cmd 0x17 */
-  bool setRF_off();
+PN5180TransceiveStat getTransceiveState();
 
-  /*
-   * Helper functions
-   */
-public:
-  void reset();
-
-  uint8_t commandTimeout = 50;
-  uint32_t getIRQStatus();
-  bool clearIRQStatus(uint32_t irqMask);
-
-  PN5180TransceiveStat getTransceiveState();
-
-  /*
-   * Private methods, called within an SPI transaction
-   */
-private:
-  bool transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer = 0, size_t recvBufferLen = 0);
-
-};
+/*
+  * Private methods, called within an SPI transaction
+  */
+bool pn5180_transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
 
 #endif /* PN5180_H */
