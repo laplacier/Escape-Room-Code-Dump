@@ -19,6 +19,7 @@
 //#define DEBUG 1
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -35,22 +36,13 @@
 #define PIN_NUM_RST  17
 spi_device_handle_t nfc;
 
-// PN5180 1-Byte Direct Commands
-// see 11.4.3.3 Host Interface Command List
-#define PN5180_WRITE_REGISTER           (0x00)
-#define PN5180_WRITE_REGISTER_OR_MASK   (0x01)
-#define PN5180_WRITE_REGISTER_AND_MASK  (0x02)
-#define PN5180_READ_REGISTER            (0x04)
-#define PN5180_WRITE_EEPROM				      (0x06)
-#define PN5180_READ_EEPROM              (0x07)
-#define PN5180_SEND_DATA                (0x09)
-#define PN5180_READ_DATA                (0x0A)
-#define PN5180_SWITCH_MODE              (0x0B)
-#define PN5180_LOAD_RF_CONFIG           (0x11)
-#define PN5180_RF_ON                    (0x16)
-#define PN5180_RF_OFF                   (0x17)
+uint8_t pn5180_txBuffer[260] = {0};
+uint8_t pn5180_rxBuffer[508] = {0};
 
-uint8_t pn5180_rxBuffer[508];
+// Prototypes
+static void pn5180_reset(void);
+esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
+
 /*
   * 11.4.1 Physical Host Interface
   * The interface of the PN5180 to a host microcontroller is based on a SPI interface,
@@ -74,6 +66,7 @@ void pn5180_init(void){
 
   // BUSY is input
   io_conf.mode = GPIO_MODE_INPUT;
+  io_conf.pin_bit_mask = 0;
   io_conf.pin_bit_mask |= (1ULL << PIN_NUM_BUSY);
   gpio_config(&io_conf);
 
@@ -81,7 +74,6 @@ void pn5180_init(void){
   gpio_set_level(PIN_NUM_RST, 1); // Prevent reset
 
   // Configure physical bus settings for pn5180
-  esp_err_t ret;
   ESP_LOGI("NFC", "Initializing bus SPI...");
   spi_bus_config_t pn5180_buscfg={
       .miso_io_num = PIN_NUM_MISO,
@@ -89,25 +81,144 @@ void pn5180_init(void){
       .sclk_io_num = PIN_NUM_CLK,
       .quadwp_io_num = -1,
       .quadhd_io_num = -1,
-      .max_transfer_sz = 508,
+      .max_transfer_sz = 512,
   };
 
   // Configure software settings for pn5180
   spi_device_interface_config_t pn5180_devcfg={
-      .clock_speed_hz = 7000000,      // 7 MHz
-      .mode = 0,                      // SPI_MODE0
-      .spics_io_num = PIN_NUM_NSS,    // CS Pin, inverted logic
-      .queue_size = 1,
-      .flags = SPI_DEVICE_HALFDUPLEX, // Only Half-Duplex supported
+      .clock_speed_hz = 4000000,
+      .mode = 0,
+      .spics_io_num = PIN_NUM_NSS,
+      .queue_size = 4,
       .pre_cb = NULL,
-      .post_cb = NULL,
   };
 
   // Apply settings
-  ESP_ERROR_CHECK(spi_bus_initialize(ESP32_HOST, &pn5180_buscfg, SPI_DMA_CH_AUTO));
+  ESP_ERROR_CHECK(spi_bus_initialize(ESP32_HOST, &pn5180_buscfg, 1));
   ESP_ERROR_CHECK(spi_bus_add_device(ESP32_HOST, &pn5180_devcfg, &nfc));
+  ESP_LOGI("NFC", "Initialized");
 
+  // Reset device
+  pn5180_reset();
+}
 
+/*
+ * A Host Interface Command consists of either 1 or 2 SPI frames depending whether the
+ * host wants to write or read data from the PN5180. An SPI Frame consists of multiple
+ * bytes.
+ * All commands are packed into one SPI Frame. An SPI Frame consists of multiple bytes.
+ * No NSS toggles allowed during sending of an SPI frame.
+ * For all 4 byte command parameter transfers (e.g. register values), the payload
+ * parameters passed follow the little endian approach (Least Significant Byte first).
+ * The BUSY line is used to indicate that the system is BUSY and cannot receive any data
+ * from a host. Recommendation for the BUSY line handling by the host:
+ * 1. Assert NSS to Low
+ * 2. Perform Data Exchange
+ * 3. Wait until BUSY is high
+ * 4. Deassert NSS
+ * 5. Wait until BUSY is low
+ * If there is a parameter error, the IRQ is set to ACTIVE and a GENERAL_ERROR_IRQ is set.
+ */
+/*phStatus_t pn5180_txn(void     *pDataParams,
+                             uint16_t  wOption,
+                             uint8_t  *pTxBuffer,
+                             uint16_t  wTxLength,
+                             uint16_t  wRxBufSize,
+                             uint8_t  *pRxBuffer,
+                             uint16_t *pRxLength) {
+    uint16_t len = wTxLength ? wTxLength : wRxBufSize; 
+    ESP_LOGD(TAG, "SPI transaction: write %d read %d options 0x%08x",
+             wTxLength, wRxBufSize, wOption);
+
+    if(wTxLength && pTxBuffer != NULL) {
+        ESP_LOGD(TAG, "Write data:");
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG, pTxBuffer, wTxLength, ESP_LOG_DEBUG);
+
+        // Do the write transaction.
+        ESP_ERROR_CHECK( dal_spi_transact(g_spi_dev,
+                                          pTxBuffer,
+                                          NULL,
+                                          wTxLength) );
+    }
+
+    if(wRxBufSize && pRxBuffer != NULL) {
+        ESP_LOGD(TAG, "Initing %d bytes of read buffer %p", wRxBufSize, pRxBuffer);
+        // Fill the read buffer, which will be outgoing, with FF.
+        //memset(pRxBuffer, 0xff, wRxBufSize);
+
+        ESP_LOGD(TAG, "Reading %d bytes", wRxBufSize);
+        // Do the read transaction.
+        ESP_ERROR_CHECK( dal_spi_transact(g_spi_dev,
+                                          pRxBuffer,
+                                          pRxBuffer,
+                                          wRxBufSize) );
+
+        ESP_LOGI(TAG, "Read data:\n");
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG, pRxBuffer, wTxLength, ESP_LOG_INFO);
+        *pRxLength = len;
+    }
+
+    return PH_DRIVER_SUCCESS;
+}
+
+esp_err_t dal_spi_transact(spi_device_handle_t dev,
+                           const void *tx,
+                           void       *rx,
+                           int        len) {
+    spi_transaction_t txn = {
+        .length = len * 8,
+        .tx_buffer = tx,
+        .rx_buffer = rx,
+    };
+
+    return spi_device_transmit(dev, &txn);
+}*/
+
+esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
+  spi_transaction_t t;
+  memset(&t, 0, sizeof(t));
+  ESP_LOGI("NFC", "Begin, wait for busy...");
+  // 0. Wait until BUSY is low
+  while (gpio_get_level(PIN_NUM_BUSY)){
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  //////////////////
+  // Send command //
+  //////////////////
+  t.length = sendBufferLen * 8;
+  t.tx_buffer = sendBuffer;
+  t.rx_buffer = NULL;
+  // Write command
+  ESP_LOGI("NFC", "Sending command...");
+  ESP_ERROR_CHECK(spi_device_transmit(nfc, &t));
+  // Finish if write-only command
+  if ((0 == recvBuffer) || (0 == recvBufferLen)) return ESP_OK;
+
+  //////////////////////
+  // Receive Response //
+  //////////////////////
+  memset(recvBuffer, 0xFF, recvBufferLen);
+  t.length = recvBufferLen * 8;
+  t.tx_buffer = recvBuffer;
+  t.rxlength = recvBufferLen * 8;
+  t.rx_buffer = recvBuffer;
+  // 2. Perform data exchange
+  ESP_LOGI("NFC", "Receiving data... txlen=%p rxlen=%p",t.tx_buffer,t.rx_buffer);
+  //ESP_ERROR_CHECK(spi_device_transmit(nfc, &t));
+  spi_device_transmit(nfc, &t);
+  ESP_LOGI("NFC", "Read data:\n");
+  ESP_LOG_BUFFER_HEX_LEVEL("NFC", recvBuffer, recvBufferLen, ESP_LOG_INFO);
+  return ESP_OK;
+}
+
+/*
+ * Reset NFC device
+ */
+static void pn5180_reset(void) {
+  gpio_set_level(PIN_NUM_RST, 0);  // at least 10us required
+  vTaskDelay(pdMS_TO_TICKS(10));
+  gpio_set_level(PIN_NUM_RST, 1); // 2ms to ramp up required
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
 
 #ifdef FALSE
@@ -137,7 +248,7 @@ bool pn5180_writeRegister(uint8_t reg, uint32_t value) {
         .tx_buffer = tx_data,
         .length = 2 * 8
     };
-    ESP_ERROR_CHECK(spi_device_polling_transmit(spi2, &t));
+    ESP_ERROR_CHECK(spi_device_polling_transmit(nfc, &t));
 }
 
 /*
@@ -502,59 +613,6 @@ raised. In case of an exception, the IRQ line of PN5180 is asserted and correspo
 status register contain information on the exception.
 */
 #endif
-
-/*
- * A Host Interface Command consists of either 1 or 2 SPI frames depending whether the
- * host wants to write or read data from the PN5180. An SPI Frame consists of multiple
- * bytes.
- * All commands are packed into one SPI Frame. An SPI Frame consists of multiple bytes.
- * No NSS toggles allowed during sending of an SPI frame.
- * For all 4 byte command parameter transfers (e.g. register values), the payload
- * parameters passed follow the little endian approach (Least Significant Byte first).
- * The BUSY line is used to indicate that the system is BUSY and cannot receive any data
- * from a host. Recommendation for the BUSY line handling by the host:
- * 1. Assert NSS to Low
- * 2. Perform Data Exchange
- * 3. Wait until BUSY is high
- * 4. Deassert NSS
- * 5. Wait until BUSY is low
- * If there is a parameter error, the IRQ is set to ACTIVE and a GENERAL_ERROR_IRQ is set.
- */
-bool pn5180_txTask(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
-  //////////////////
-  // Send command //
-  //////////////////
-  
-  // 0. Wait until BUSY is low
-  while (gpio_get_level(PIN_NUM_BUSY));
-  // 1. Set NSS to Low
-  digitalWrite(PN5180_NSS, LOW); delay(1);
-  // 2. Perform data exchange
-  pn5180_transfer((uint8_t*)sendBuffer, sendBufferLen);	
-  // 3. Wait until BUSY is high
-  // 4. Set NSS to high
-  digitalWrite(PN5180_NSS, HIGH); delay(1);
-  // 5. Wait until BUSY is low
-
-  // Finish if write-only command
-  if ((0 == recvBuffer) || (0 == recvBufferLen)) return true;
-
-  //////////////////////
-  // Receive Response //
-  //////////////////////
-
-  // 1. Set NSS to LOW
-  digitalWrite(PN5180_NSS, LOW); 
-  // 2. Perform data exchange
-  memset(recvBuffer, 0xFF, recvBufferLen);
-  pn5180_transfer(recvBuffer, recvBufferLen);
-  // 3. Wait until BUSY is high
-  // 4. Set NSS to high
-  digitalWrite(PN5180_NSS, HIGH); 
-  // 5. Wait until BUSY is low
-
-  return true;
-}
 
 #ifdef FALSE
 /*
