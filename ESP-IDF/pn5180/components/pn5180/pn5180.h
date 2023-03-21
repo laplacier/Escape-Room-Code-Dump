@@ -82,7 +82,7 @@ typedef enum {
   PN5180_TS_Receiving = 5,
   PN5180_TS_LoopBack = 6,
   PN5180_TS_RESERVED = 7
-} PN5180TransceiveStat;
+} PN5180TransceiveState;
 
 // PN5180 IRQ_STATUS
 #define PN5180_RX_IRQ_STAT         	  (1<<0)  // End of RF receiption IRQ
@@ -96,43 +96,200 @@ typedef enum {
 #define PN5180_GENERAL_ERROR_IRQ_STAT (1<<17) // General error IRQ
 #define PN5180_LPCD_IRQ_STAT 			    (1<<19) // LPCD Detection IRQ
 
-void pn5180_init();
-esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
-//PN5180 direct commands with host interface
-/* cmd 0x00 */
-//bool pn5180_writeRegister(uint8_t reg, uint32_t value);
-/* cmd 0x01 */
-//bool pn5180_writeRegisterWithOrMask(uint8_t addr, uint32_t mask);
-/* cmd 0x02 */
-//bool pn5180_writeRegisterWithAndMask(uint8_t addr, uint32_t mask);
+/**
+ * @brief  Initialize PN5180 device
+ *
+ * @note   If SPI fails to initialize, program will be aborted.
+ */
+void pn5180_init(void);
 
-/* cmd 0x04 */
-//bool pn5180_readRegister(uint8_t reg, uint32_t *value);
+/**
+ * @brief  Reset PN5180 device
+ *
+ * @return
+ *     - ESP_OK = Success
+ *     - ESP_TIMEOUT = IRQ_Status did not return IDLE
+ * 
+ * @note   A constant low level of at least 10 μs at the RESET_N pin starts the internal reset procedure. When the PN5180 has finished the start_up, a IDLE_IRQ is raised and the IC is ready to receive commands on the host interface.
+ */
+esp_err_t pn5180_reset(void);
 
-/* cmd 0x06 */
-//bool pn5180_writeEEprom(uint8_t addr, uint8_t *buffer, uint8_t len);
-/* cmd 0x07 */
-//bool pn5180_readEEprom(uint8_t addr, uint8_t *buffer, int len);
+////////////////////////////////////////////////
+// PN5180 direct commands with host interface //
+////////////////////////////////////////////////
 
-/* cmd 0x09 */
-//bool pn5180_sendData(uint8_t *data, int len, uint8_t validBits);
-/* cmd 0x0a */
-//bool pn5180_readData(uint8_t len, uint8_t *buffer);
-/* prepare LPCD registers */
-//bool pn5180_prepareLPCD();
-/* cmd 0x0B */
-//bool pn5180_switchToLPCD(uint16_t wakeupCounterInMs);
-/* cmd 0x11 */
-//bool pn5180_loadRFConfig(uint8_t txConf, uint8_t rxConf);
+/**
+ * @brief  This command, 0x00, is used to write a 32-bit value (little endian) to a configuration register.
+ *
+ * @attention The address of the register must exist. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  reg Register addess.
+ * @param  value Register content. 
+ *
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_writeRegister(uint8_t reg, uint32_t value);
 
-/* cmd 0x16 */
-//bool pn5180_setRF_on();
-/* cmd 0x17 */
-//bool pn5180_setRF_off();
+/**
+ * @brief  This command, 0x01, modifies the content of a register using a logical OR operation. The
+content of the register is read and a logical OR operation is performed with the provided
+mask. The modified content is written back to the register.
+ *
+ * @attention The address of the register must exist. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  addr Register addess.
+ * @param  mask OR_MASK 
+ *
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_writeRegisterWithOrMask(uint8_t addr, uint32_t mask);
 
-//uint8_t commandTimeout = 50;
-//uint32_t pn5180_getIRQStatus();
-//bool pn5180_clearIRQStatus(uint32_t irqMask);
+/**
+ * @brief  This command, 0x02, modifies the content of a register using a logical AND operation. The
+content of the register is read and a logical AND operation is performed with the provided
+mask. The modified content is written back to the register.
+ *
+ * @attention The address of the register must exist. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  addr Register addess.
+ * @param  mask AND_MASK 
+ *
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_writeRegisterWithAndMask(uint8_t addr, uint32_t mask);
 
-//PN5180TransceiveStat getTransceiveState();
+/**
+ * @brief  This command, 0x04, is used to read the content of a configuration register. The content of the register is returned in the 4 byte response.
+ *
+ * @attention The address of the register must exist. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  reg Register address.
+ * @param  value Register content. 
+ *
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_readRegister(uint8_t reg, uint32_t *value);
+
+/**
+ * @brief  This command, 0x06, is used to write up to 255 bytes to the EEPROM. The field ‘EEPROM content’ contains the data to be written to EEPROM starting at the address given by byte ‘EEPROM Address’. The data is written in sequential order.
+ *
+ * @attention The EEPROM Address field must be in the range from 0 – 254, inclusive. The number of bytes within ‘Values’ field must be in the range from 1 – 255, inclusive. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  addr Address in EEPROM from which write operation starts {EEPROM Address}
+ * @param  buffer EEPROM content.
+ *
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer);
+
+/**
+ * @brief  This command, 0x07, is used to read data from EEPROM memory area. The field 'Address" indicates the start address of the read operation. The field Length indicates the number of bytes to read. The response contains the data read from EEPROM (content of the EEPROM); The data is read in sequentially increasing order starting with the given address.
+ *
+ * @param  addr Address in EEPROM from which write operation starts {EEPROM Address}.
+ * @param  buffer EEPROM content.
+ *
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_readEEprom(uint8_t addr, uint8_t *buffer);
+
+/**
+ * @brief  This command, 0x09, writes data to the RF transmission buffer and starts the RF transmission. The parameter ‘Number of valid bits in last Byte’ indicates the exact number of bits to be transmitted for the last byte (for non-byte aligned frames).
+ *
+ * @attention Precondition: Host shall configure the Transceiver by setting the register SYSTEM_CONFIG.COMMAND to 0x3 before using the SEND_DATA command, as the command SEND_DATA is only writing data to the transmission buffer and starts the transmission but does not perform any configuration. The size of ‘Tx Data’ field must be in the range from 0 to 260, inclusive (the 0 byte length allows a symbol only transmission when the TX_DATA_ENABLE is cleared). ‘Number of valid bits in last Byte’ field must be in the range from 0 to 7. The command must not be called during an ongoing RF transmission. Transceiver must be in ‘WaitTransmit’ state with ‘Transceive’ command set. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  data Array of up to 260 elements {Transmit data}
+ * @param  len 
+ * @param  validBits Number of valid bits in last Byte
+ * 
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_sendData(uint8_t *data, uint8_t validBits);
+
+/**
+ * @brief  This command, 0x0A, reads data from the RF reception buffer, after a successful reception. The RX_STATUS register contains the information to verify if the reception had been successful. The data is available within the response of the command. The host controls the number of bytes to be read via the SPI interface.
+ *
+ * @attention The RF data had been successfully received. In case the instruction is executed without preceding an RF data reception, no exception is raised but the data read back from the reception buffer is invalid. If the condition is not fulfilled, an exception is raised.
+ * 
+ * @param  len Address in EEPROM from which write operation starts {EEPROM Address}
+ * @param  buffer EEPROM content.
+ * 
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+uint8_t* pn5180_readData(int len);
+
+////////////////////////////
+// Prepare LPCD registers //
+////////////////////////////
+
+esp_err_t pn5180_prepareLPCD();
+
+/**
+ * @brief  This instruction, 0x0B, is used to switch the mode. It is only possible to switch from normal mode to Standby, LPCD or Autocoll mode. Switching back to normal mode is not possible using this instruction. The modes Standby, LPCD and Autocoll terminate on specific conditions. Once a configured mode (Standby, LPCD, Autocoll) terminates, normal mode is entered again. To force an exit from Standby, LPCD or Autocoll mode to normal mode, the host controller has to reset the PN5180.
+ *
+ * @attention Parameter ‘mode’ has to be in the range from 0 to 2, inclusive. Dependent on the selected mode, different parameters have to be passed:
+
+ * 
+ * @param  len Address in EEPROM from which write operation starts {EEPROM Address}
+ * @param  buffer EEPROM content.
+ * 
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_switchToLPCD(uint16_t wakeupCounterInMs);
+
+/**
+ * @brief  This instruction, 0x11, is used to load the RF configuration from EEPROM into the configuration registers. The configuration refers to a unique combination of "mode" (target/initiator) and "baud rate". The configurations can be loaded separately for the receiver (Receiver configuration) and transmitter (Transmitter configuration).
+ *
+ * @attention Parameter 'Transmitter Configuration' must be in the range from 0x0 - 0x1C, inclusive. If the transmitter parameter is 0xFF, transmitter configuration is not changed. Field 'Receiver Configuration' must be in the range from 0x80 - 0x9C, inclusive.
+ * 
+ * @param  len Address in EEPROM from which write operation starts {EEPROM Address}
+ * @param  buffer EEPROM content.
+ * 
+ * @return
+ *     - ESP_OK  Success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *
+ */
+esp_err_t pn5180_loadRFConfig(uint8_t txConf, uint8_t rxConf);
+
+/**
+ * @brief This command, 0x16, is used to switch on the internal RF field. If enabled the TX_RFON_IRQ is set after the field is switched on.
+ */
+esp_err_t pn5180_setRF_on();
+
+/**
+ * @brief This command, 0x17, is used to switch off the internal RF field. If enabled, the TX_RFOFF_IRQ is set after the field is switched off.
+ */
+esp_err_t pn5180_setRF_off();
+
+uint32_t pn5180_getIRQStatus();
+esp_err_t pn5180_clearIRQStatus(uint32_t irqMask);
+
+PN5180TransceiveState getTransceiveState();
 #endif /* PN5180_H */

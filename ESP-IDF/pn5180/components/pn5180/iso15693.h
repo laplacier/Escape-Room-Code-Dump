@@ -36,19 +36,19 @@ typedef enum {
   ISO15693_EC_CUSTOM_CMD_ERROR = 0xA0
 } ISO15693ErrorCode;
 
-ISO15693ErrorCode ISO15693Command(uint8_t *cmd, uint8_t cmdLen, uint8_t **resultPtr);
-ISO15693ErrorCode getInventory(uint8_t *uid);
-ISO15693ErrorCode readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
-ISO15693ErrorCode writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
-ISO15693ErrorCode getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks);
+ISO15693ErrorCode pn5180_ISO15693Command(uint8_t *cmd, uint8_t **resultPtr);
+ISO15693ErrorCode pn5180_getInventory(uint8_t *uid);
+ISO15693ErrorCode pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
+ISO15693ErrorCode pn5180_writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
+ISO15693ErrorCode pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks);
 // ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
-ISO15693ErrorCode getRandomNumber(uint8_t *randomData);
-ISO15693ErrorCode setPassword(uint8_t identifier, uint8_t *password, uint8_t *random);
-ISO15693ErrorCode enablePrivacy(uint8_t *password, uint8_t *random);
+ISO15693ErrorCode pn5180_getRandomNumber(uint8_t *randomData);
+ISO15693ErrorCode pn5180_setPassword(uint8_t identifier, uint8_t *password, uint8_t *random);
+ISO15693ErrorCode pn5180_enablePrivacy(uint8_t *password, uint8_t *random);
 // helpers
-ISO15693ErrorCode enablePrivacyMode(uint8_t *password);
-ISO15693ErrorCode disablePrivacyMode(uint8_t *password); 
-bool setupRF();
+ISO15693ErrorCode pn5180_enablePrivacyMode(uint8_t *password);
+ISO15693ErrorCode pn5180_disablePrivacyMode(uint8_t *password); 
+esp_err_t pn5180_setupRF(void);
 //const __FlashStringHelper *strerror(ISO15693ErrorCode errno);  
 
 #endif /* PN5180ISO15693_H */

@@ -6,24 +6,24 @@
 #include "freertos/task.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "iso15693.h"
 #include "pn5180.h"
 
-extern uint8_t pn5180_rxBuffer[508];
 void showIRQStatus(uint32_t irqStatus);
 
 void app_main(void)
 {
     pn5180_init();
-
     while(1){
-        //uint32_t irq_state = 0;
-        //pn5180_command(cmd, 2, (uint8_t*)&irq_state, 4);
-        //showIRQStatus(irq_state);
-        //vTaskDelay(pdMS_TO_TICKS(1000));
-        uint8_t version[2];
-        uint8_t cmd[3] = { PN5180_READ_EEPROM, PN5180_PRODUCT_VERSION, sizeof(version) };
-        pn5180_command(cmd, 3, version, sizeof(version));
-        ESP_LOGI("NFC","Product version: %d.%d",version[1],version[0]);
+        showIRQStatus(pn5180_getIRQStatus());
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint8_t product[2];
+        pn5180_readEEprom(PN5180_PRODUCT_VERSION, product);
+        ESP_LOGI("NFC","Product version: %d.%d",product[1],product[0]);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint8_t firmware[2];
+        pn5180_readEEprom(PN5180_FIRMWARE_VERSION, firmware);
+        ESP_LOGI("NFC","Firmware version: %d.%d",firmware[1],firmware[0]);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
     //ESP_LOGI("NFC","Firmware Version: %d.%d",pn5180_rxBuffer[1],pn5180_rxBuffer[0]);
