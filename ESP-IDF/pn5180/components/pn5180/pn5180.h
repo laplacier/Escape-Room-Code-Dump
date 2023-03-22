@@ -82,7 +82,7 @@ typedef enum {
   PN5180_TS_Receiving = 5,
   PN5180_TS_LoopBack = 6,
   PN5180_TS_RESERVED = 7
-} PN5180TransceiveState;
+} PN5180TransceiveState_t;
 
 // PN5180 IRQ_STATUS
 #define PN5180_RX_IRQ_STAT         	  (1<<0)  // End of RF receiption IRQ
@@ -195,7 +195,7 @@ esp_err_t pn5180_readRegister(uint8_t reg, uint32_t *value);
  *     - ESP_ERR_INVALID_ARG Parameter error
  *
  */
-esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer);
+esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer, uint16_t len);
 
 /**
  * @brief  This command, 0x07, is used to read data from EEPROM memory area. The field 'Address" indicates the start address of the read operation. The field Length indicates the number of bytes to read. The response contains the data read from EEPROM (content of the EEPROM); The data is read in sequentially increasing order starting with the given address.
@@ -208,23 +208,23 @@ esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer);
  *     - ESP_ERR_INVALID_ARG Parameter error
  *
  */
-esp_err_t pn5180_readEEprom(uint8_t addr, uint8_t *buffer);
+esp_err_t pn5180_readEEprom(uint8_t addr, uint8_t *buffer, uint16_t len);
 
 /**
  * @brief  This command, 0x09, writes data to the RF transmission buffer and starts the RF transmission. The parameter ‘Number of valid bits in last Byte’ indicates the exact number of bits to be transmitted for the last byte (for non-byte aligned frames).
  *
  * @attention Precondition: Host shall configure the Transceiver by setting the register SYSTEM_CONFIG.COMMAND to 0x3 before using the SEND_DATA command, as the command SEND_DATA is only writing data to the transmission buffer and starts the transmission but does not perform any configuration. The size of ‘Tx Data’ field must be in the range from 0 to 260, inclusive (the 0 byte length allows a symbol only transmission when the TX_DATA_ENABLE is cleared). ‘Number of valid bits in last Byte’ field must be in the range from 0 to 7. The command must not be called during an ongoing RF transmission. Transceiver must be in ‘WaitTransmit’ state with ‘Transceive’ command set. If the condition is not fulfilled, an exception is raised.
  * 
- * @param  data Array of up to 260 elements {Transmit data}
- * @param  len 
- * @param  validBits Number of valid bits in last Byte
+ * @param  data Array of up to 260 elements {Transmit data}.
+ * @param  len Length of received data in bytes.
+ * @param  validBits Number of valid bits in last Byte.
  * 
  * @return
  *     - ESP_OK  Success
  *     - ESP_ERR_INVALID_ARG Parameter error
  *
  */
-esp_err_t pn5180_sendData(uint8_t *data, uint8_t validBits);
+esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits);
 
 /**
  * @brief  This command, 0x0A, reads data from the RF reception buffer, after a successful reception. The RX_STATUS register contains the information to verify if the reception had been successful. The data is available within the response of the command. The host controls the number of bytes to be read via the SPI interface.
@@ -291,5 +291,5 @@ esp_err_t pn5180_setRF_off();
 uint32_t pn5180_getIRQStatus();
 esp_err_t pn5180_clearIRQStatus(uint32_t irqMask);
 
-PN5180TransceiveState getTransceiveState();
+PN5180TransceiveState_t getTransceiveState();
 #endif /* PN5180_H */

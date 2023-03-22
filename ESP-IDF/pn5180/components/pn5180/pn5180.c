@@ -37,6 +37,7 @@
 #define PIN_NUM_RST  17
 spi_device_handle_t nfc;
 
+static char* TAG = "pn5180.c";
 uint8_t readBuffer[508];
 
 ////////////////////////
@@ -63,6 +64,7 @@ static esp_err_t pn5180_busy_wait(uint32_t timeout);
 // Functions //
 ///////////////
 void pn5180_init(void){
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   gpio_config_t io_conf = {};
 
   // NSS and Reset are outputs
@@ -85,7 +87,7 @@ void pn5180_init(void){
   gpio_set_level(PIN_NUM_RST, 1); // Prevent reset
 
   // Configure physical bus settings for pn5180
-  ESP_LOGV("NFC", "Initializing bus SPI...");
+  ESP_LOGD(TAG, "init: Initializing bus SPI...");
   spi_bus_config_t pn5180_buscfg={
       .miso_io_num = PIN_NUM_MISO,
       .mosi_io_num = PIN_NUM_MOSI,
@@ -107,43 +109,44 @@ void pn5180_init(void){
   // Apply settings
   ESP_ERROR_CHECK(spi_bus_initialize(ESP32_HOST, &pn5180_buscfg, 1));
   ESP_ERROR_CHECK(spi_bus_add_device(ESP32_HOST, &pn5180_devcfg, &nfc));
-  ESP_LOGI("NFC", "Initialized");
+  ESP_LOGI(TAG, "init: Bus SPI Initialized");
 
   // Reset device
   pn5180_reset();
 
   // Configure and turn on RF
-  pn5180_setupRF();
+  ESP_ERROR_CHECK(pn5180_setupRF());
 }
 
 static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   esp_err_t ret;
   ////////////////////
   // Initialization //
   ////////////////////
-  ESP_LOGD("NFC", "Write, wait for busy...");
+  ESP_LOGD(TAG, "command: Write, wait for busy...");
   ret = pn5180_busy_wait(1000); // 1.
   if(ret == ESP_ERR_TIMEOUT){
-    ESP_LOGE("NFC", "BUSY signal line timeout");
+    ESP_LOGE(TAG, "command: BUSY signal line timeout");
     return ret;
   }
-  ESP_LOGD("NFC", "SPI transaction: write %d read %d", sendBufferLen, recvBufferLen);
+  ESP_LOGD(TAG, "command: SPI transaction: write %d read %d", sendBufferLen, recvBufferLen);
   
   //////////////////
   // Send command //
   //////////////////
-  ESP_LOGD("NFC", "Write data:");
-  ESP_LOG_BUFFER_HEX_LEVEL("NFC", sendBuffer, sendBufferLen, ESP_LOG_DEBUG);
+  ESP_LOGD(TAG, "command: Write data:");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, sendBuffer, sendBufferLen, ESP_LOG_DEBUG);
   ret = pn5180_txn(nfc, sendBuffer, sendBufferLen, NULL, 0); // 2. 3. 4.
   ESP_ERROR_CHECK(ret);
 
   // Finish if write-only command
   if ((0 == recvBuffer) || (0 == recvBufferLen)) return ret;
 
-  ESP_LOGD("NFC", "Read, wait for busy...");
+  ESP_LOGD(TAG, "command: Read, wait for busy...");
   ret = pn5180_busy_wait(1000); // 5.
   if(ret == ESP_ERR_TIMEOUT){
-    ESP_LOGE("NFC", "BUSY signal line timeout");
+    ESP_LOGE(TAG, "command: BUSY signal line timeout");
     return ret;
   }
   memset(recvBuffer, 0xFF, recvBufferLen);
@@ -154,8 +157,8 @@ static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8
   ret = pn5180_txn(nfc, recvBuffer, recvBufferLen, recvBuffer, recvBufferLen); // 6. 7. 8.
   ESP_ERROR_CHECK(ret);
 
-  ESP_LOGD("NFC", "Read data:\n");
-  ESP_LOG_BUFFER_HEX_LEVEL("NFC", recvBuffer, recvBufferLen, ESP_LOG_DEBUG);
+  ESP_LOGD(TAG, "command: Read data:\n");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, recvBuffer, recvBufferLen, ESP_LOG_DEBUG);
   
   return ret;
 }
@@ -165,16 +168,21 @@ static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8
  * over the SPI interface
  */
 static esp_err_t pn5180_busy_wait(uint32_t timeout){
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint32_t retries = timeout / 10;
   while (gpio_get_level(PIN_NUM_BUSY) && retries > 0){
     vTaskDelay(pdMS_TO_TICKS(10));
     retries--;
   }
-  if(gpio_get_level(PIN_NUM_BUSY)) return ESP_ERR_TIMEOUT;
+  if(gpio_get_level(PIN_NUM_BUSY)){
+    ESP_LOGE(TAG, "busy_wait: Timeout waiting for BUSY pin LOW");
+    return ESP_ERR_TIMEOUT;
+  }
   return ESP_OK;
 }
 
 esp_err_t pn5180_reset(void) {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint32_t retries = 10;
   gpio_set_level(PIN_NUM_RST, 0);
   vTaskDelay(pdMS_TO_TICKS(1));
@@ -184,6 +192,7 @@ esp_err_t pn5180_reset(void) {
     retries--;
   }
   if((PN5180_IDLE_IRQ_STAT & pn5180_getIRQStatus()) == 0){
+    ESP_LOGE(TAG, "reset: Timeout waiting for IRQ state IDLE");
     return ESP_ERR_TIMEOUT;
   }
   return ESP_OK;
@@ -237,9 +246,9 @@ esp_err_t pn5180_readRegister(uint8_t reg, uint32_t *value) {
 /*
  * WRITE_EEPROM - 0x06
  */
-esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer) {
-  uint32_t len = sizeof(buffer);
+esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer, uint16_t len) {
   if ((addr > 254) || ((addr+len) > 254)) {
+    ESP_LOGE(TAG, "writeEEprom: Size of tx buffer exceeds 253 bytes");
     return ESP_ERR_INVALID_SIZE;
   }
 	uint8_t cmd[len + 2];
@@ -252,9 +261,9 @@ esp_err_t pn5180_writeEEprom(uint8_t addr, uint8_t *buffer) {
 /*
  * READ_EEPROM - 0x07
  */
-esp_err_t pn5180_readEEprom(uint8_t addr, uint8_t *buffer) {
-  uint32_t len = sizeof(buffer);
+esp_err_t pn5180_readEEprom(uint8_t addr, uint8_t *buffer, uint16_t len) {
   if ((addr > 254) || ((addr+len) > 254)) {
+    ESP_LOGE(TAG, "readEEprom: Size of rx buffer exceeds 253 bytes");
     return ESP_ERR_INVALID_SIZE;
   }
   uint8_t cmd[3] = { PN5180_READ_EEPROM, addr, (uint8_t)(len) };
@@ -283,6 +292,7 @@ esp_err_t pn5180_loadRFConfig(uint8_t txConf, uint8_t rxConf) {
  * RF_ON - 0x16
  */
 esp_err_t pn5180_setRF_on() {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
   pn5180_command(cmd, 2, 0, 0);
 
@@ -291,7 +301,11 @@ esp_err_t pn5180_setRF_on() {
     vTaskDelay(pdMS_TO_TICKS(10));
 	  retries--;
   }
-  if(0 == (PN5180_TX_RFON_IRQ_STAT & pn5180_getIRQStatus())) return ESP_FAIL;
+  ESP_LOGD(TAG, "setRF_on: IRQ State after set - %ld", pn5180_getIRQStatus());
+  if(0 == (PN5180_TX_RFON_IRQ_STAT & pn5180_getIRQStatus())){
+    ESP_LOGE(TAG, "setRF_on: Failed to detect IRQ state TX_RFON");
+    return ESP_FAIL;
+  }
 
   pn5180_clearIRQStatus(PN5180_TX_RFON_IRQ_STAT);
   return ESP_OK;
@@ -319,9 +333,12 @@ esp_err_t pn5180_setRF_off() {
 /*
  * SEND_DATA - 0x09
  */
-esp_err_t pn5180_sendData(uint8_t *data, uint8_t validBits) {
-  uint16_t len = sizeof(data);
-  if (len > 260) return ESP_ERR_INVALID_SIZE;
+esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits) {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
+  if (len > 260){
+    ESP_LOGE(TAG, "sendData: Length of data exceeds 260 bytes");
+    return ESP_ERR_INVALID_SIZE;
+  }
 
   uint8_t buffer[len+2];
   buffer[0] = PN5180_SEND_DATA;
@@ -332,6 +349,7 @@ esp_err_t pn5180_sendData(uint8_t *data, uint8_t validBits) {
 
   pn5180_writeRegisterWithAndMask(PN5180_SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
   pn5180_writeRegisterWithOrMask(PN5180_SYSTEM_CONFIG, 0x00000003);   // Transceive Command
+  vTaskDelay(pdMS_TO_TICKS(10));
   /*
    * Transceive command; initiates a transceive cycle.
    * Note: Depending on the value of the Initiator bit, a
@@ -340,7 +358,32 @@ esp_err_t pn5180_sendData(uint8_t *data, uint8_t validBits) {
    * automatically. It stays in the transceive cycle until
    * stopped via the IDLE/StopCom command
    */
-  if (PN5180_TS_WaitTransmit != getTransceiveState()) return ESP_ERR_INVALID_STATE;
+
+  uint32_t rfStatus;
+  if (pn5180_readRegister(PN5180_RF_STATUS, &rfStatus) != ESP_OK) {
+    ESP_LOGE(TAG, "sendData: Failed to read RF_STATUS register.");
+    return ESP_ERR_INVALID_RESPONSE;
+  }
+
+  /*
+   * TRANSCEIVE_STATEs:
+   *  0 - idle
+   *  1 - wait transmit
+   *  2 - transmitting
+   *  3 - wait receive
+   *  4 - wait for data
+   *  5 - receiving
+   *  6 - loopback
+   *  7 - reserved
+   */
+  ESP_LOGD(TAG, "sendData: rfStatus=%ld", rfStatus);
+  PN5180TransceiveState_t state = ((rfStatus >> 24) & 0x07);
+
+  ESP_LOGD(TAG,"sendData: state=%d",(uint8_t)(state));
+  if (PN5180_TS_WaitTransmit != state){
+    ESP_LOGE(TAG, "sendData: TransceiveState not WaitTransmit");
+    return ESP_ERR_INVALID_STATE;
+  }
 
   return pn5180_command(buffer, len+2, 0, 0);
 }
@@ -357,11 +400,13 @@ uint8_t* pn5180_readData(int len) {
   return readBuffer;
 }
 
+#ifdef FALSE
 /*
  * Get TRANSCEIVE_STATE from RF_STATUS register
  */
 
-PN5180TransceiveState getTransceiveState() {
+PN5180TransceiveState_t getTransceiveState() {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint32_t rfStatus;
   if (!pn5180_readRegister(PN5180_RF_STATUS, &rfStatus)) {
     return PN5180_TS_Idle;
@@ -378,11 +423,10 @@ PN5180TransceiveState getTransceiveState() {
    *  6 - loopback
    *  7 - reserved
    */
+  ESP_LOGI(TAG, "getTransceiveState: rfStatus=%ld", rfStatus);
   uint8_t state = ((rfStatus >> 24) & 0x07);
   return state;
 }
-
-#ifdef FALSE
 
 /*
  * READ_DATA - 0x0A
@@ -395,19 +439,17 @@ PN5180TransceiveState getTransceiveState() {
  * reception buffer is invalid. If the condition is not fulfilled, an exception is raised.
  */
 
-bool pn5180_readData(uint8_t len, uint8_t *buffer) {
+esp_err_t pn5180_readData(uint8_t len, uint8_t *buffer) {
 	if (len > 508) {
-		return false;
+		return ESP_ERR_INVALID_SIZE;
 	}
 	uint8_t cmd[2] = { PN5180_READ_DATA, 0x00 };
-	PN5180_SPI.beginTransaction(SPI_SETTINGS);
-	bool success = transceiveCommand(cmd, 2, buffer, len);
-	PN5180_SPI.endTransaction();
-	return success;
+	return pn5180_command(cmd, 2, buffer, len);;
 }
+#endif
 
 /* prepare LPCD registers */
-bool pn5180_prepareLPCD() {
+esp_err_t pn5180_prepareLPCD() {
   //=======================================LPCD CONFIG================================================================================
 
   uint8_t data[255];
@@ -447,24 +489,20 @@ bool pn5180_prepareLPCD() {
   pn5180_writeEEprom(0x3A, data, 1);
   pn5180_readEEprom(0x3A, response, 1);
   afterFieldOn = response[0];
-  delay(100);
-  return true;
+  vTaskDelay(pdMS_TO_TICKS(100));
+  return ESP_OK;
 }
 
 /* switch the mode to LPCD (low power card detection)
  * Parameter 'wakeupCounterInMs' must be in the range from 0x0 - 0xA82
  * max. wake-up time is 2960 ms.
  */
-bool pn5180_switchToLPCD(uint16_t wakeupCounterInMs) {
+esp_err_t pn5180_switchToLPCD(uint16_t wakeupCounterInMs) {
   // clear all IRQ flags
   pn5180_clearIRQStatus(0xffffffff); 
   // enable only LPCD and general error IRQ
-  pn5180_writeRegister(IRQ_ENABLE, LPCD_IRQ_STAT | GENERAL_ERROR_IRQ_STAT);  
+  pn5180_writeRegister(PN5180_IRQ_ENABLE, PN5180_LPCD_IRQ_STAT | PN5180_GENERAL_ERROR_IRQ_STAT);  
   // switch mode to LPCD 
   uint8_t cmd[4] = { PN5180_SWITCH_MODE, 0x01, (uint8_t)(wakeupCounterInMs & 0xFF), (uint8_t)((wakeupCounterInMs >> 8U) & 0xFF) };
-  PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  bool success = transceiveCommand(cmd, sizeof(cmd));
-  PN5180_SPI.endTransaction();
-  return success;
+  return pn5180_command(cmd, sizeof(cmd), 0, 0);
 }
-#endif

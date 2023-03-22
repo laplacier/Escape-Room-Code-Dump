@@ -19,23 +19,29 @@
 //#define DEBUG 1
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/spi_master.h"
 #include "iso15693.h"
-
-static char iso15693_strerror(ISO15693ErrorCode errno);
+static char* TAG = "iso15693.c";
 
 esp_err_t pn5180_setupRF(void) {
   esp_err_t ret;
-  ESP_LOGD("NFC", "Loading RF-configuration...");
+  ESP_LOGD(TAG, "Loading RF-configuration...");
   ret = pn5180_loadRFConfig(0x0d, 0x8d);
-  if(ret != ESP_OK) return ret;
+  if(ret != ESP_OK){
+    ESP_LOGE(TAG, "setupRF: Failed to load RF Config");
+    return ret;
+  }
 
-  ESP_LOGD("NFC", "Turning ON RF field...");
+  ESP_LOGD(TAG, "Turning ON RF field...");
   ret = pn5180_setRF_on();
-  if(ret != ESP_OK) return ret;
+  if(ret != ESP_OK){
+    ESP_LOGE(TAG, "setupRF: Failed to set RF on");
+    return ret;
+  }
 
   pn5180_writeRegisterWithAndMask(PN5180_SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
   pn5180_writeRegisterWithOrMask(PN5180_SYSTEM_CONFIG, 0x00000003);   // Transceive Command
@@ -50,19 +56,20 @@ esp_err_t pn5180_setupRF(void) {
  * Response format: SOF, Resp.Flags, DSFID, UID, CRC16, EOF
  *
  */
-ISO15693ErrorCode pn5180_getInventory(uint8_t *uid) {
-  //                     Flags,  CMD, maskLen
-  uint8_t inventory[] = { 0x26, 0x01, 0x00 };
-  //                        |\- inventory flag + high data rate
-  //                        \-- 1 slot: only one card, no AFI field present
-  ESP_LOGD("NFC","Get Inventory...");
+ISO15693ErrorCode_t pn5180_getInventory(uint8_t *uid) {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
+  //                      Flags,  CMD, maskLen
+  uint8_t inventory[3] = { 0x26, 0x01, 0x00 };
+  //                         |\- inventory flag + high data rate
+  //                         \-- 1 slot: only one card, no AFI field present
+  ESP_LOGD(TAG,"getInventory: Get Inventory...");
 
   for (int i=0; i<8; i++) {
     uid[i] = 0;  
   }
   
   uint8_t *readBuffer;
-  ISO15693ErrorCode rc = pn5180_ISO15693Command(inventory, &readBuffer);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(inventory, 3, &readBuffer);
   if (ISO15693_EC_OK != rc) {
     return rc;
   }
@@ -72,7 +79,7 @@ ISO15693ErrorCode pn5180_getInventory(uint8_t *uid) {
     printUID <<= 8;
     printUID |= readBuffer[2+i];
   }
-  ESP_LOGD("NFC","Response flags: 0x%X, Data Storage Format ID: 0x%X, UID: 0x%llX", readBuffer[0], readBuffer[1], printUID);
+  ESP_LOGD(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X, UID: 0x%llX", readBuffer[0], readBuffer[1], printUID);
 
   return ISO15693_EC_OK;
 }
@@ -131,30 +138,43 @@ ISO15693ErrorCode pn5180_getInventory(uint8_t *uid) {
  *   -1 = No card detected
  *   >0 = Error code
  */
-ISO15693ErrorCode pn5180_ISO15693Command(uint8_t *cmd, uint8_t **resultPtr) {
-  ESP_LOGD("NFC","Issue Command 0x%X...", cmd[1]);
-  pn5180_sendData(cmd, 0);
+ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr) {
+  esp_log_level_set(TAG, ESP_LOG_DEBUG);
+  ESP_LOGD(TAG,"ISO5693Command: Issue Command 0x%X...", cmd[1]);
+  pn5180_sendData(cmd, cmdLen, 0);
   vTaskDelay(pdMS_TO_TICKS(10));
 
-  uint32_t irqR = pn5180_getIRQStatus();
-  if (0 == (irqR & PN5180_RX_SOF_DET_IRQ_STAT)) return EC_NO_CARD;
-
   uint8_t retries = 5;
+  uint32_t irqR = pn5180_getIRQStatus();
+  while (!(irqR & PN5180_RX_SOF_DET_IRQ_STAT) && retries > 0) {   // wait for RF field to set up (max 500ms)
+    vTaskDelay(pdMS_TO_TICKS(10));
+	  irqR = pn5180_getIRQStatus();
+    retries--;
+  }
+  if (0 == (irqR & PN5180_RX_SOF_DET_IRQ_STAT)){
+    ESP_LOGE(TAG, "ISO15693Command: No RX_SOF_DET IRQ. State=%ld", irqR);
+    return EC_NO_CARD;
+  }
+
+  retries = 5;
   while (!(irqR & PN5180_RX_IRQ_STAT) && retries > 0) {   // wait for RF field to set up (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
 	  retries--;
   }
-  if(!(irqR & PN5180_RX_IRQ_STAT)) return EC_NO_CARD;
+  if(!(irqR & PN5180_RX_IRQ_STAT)){ 
+    ESP_LOGE(TAG, "ISO15693Command: No EOF_RX IRQ. State=%ld", irqR);
+    return EC_NO_CARD;
+  }
   
   uint32_t rxStatus;
   pn5180_readRegister(PN5180_RX_STATUS, &rxStatus);
   uint16_t len = (uint16_t)(rxStatus & 0x000001ff);
   
-  ESP_LOGD("NFC","RX-Status=0x%lX, len=%d", rxStatus, len);
+  ESP_LOGD(TAG,"ISO5693Command: RX-Status=0x%lX, len=%d", rxStatus, len);
 
   *resultPtr = pn5180_readData(len);
   if (0L == *resultPtr) {
-    ESP_LOGD("NFC","*** ERROR in readData!");
+    ESP_LOGE(TAG,"ISO5693Command: ERROR in readData!");
     return ISO15693_EC_UNKNOWN_ERROR;
   }
 
@@ -167,44 +187,44 @@ ISO15693ErrorCode pn5180_ISO15693Command(uint8_t *cmd, uint8_t **resultPtr) {
   uint8_t responseFlags = (*resultPtr)[0];
   if (responseFlags & (1<<0)) { // error flag
     uint8_t errorCode = (*resultPtr)[1];
-    
-    ESP_LOGD("NFC","ERROR code=%X - %s",errorCode, iso15693_strerror(errorCode));
+    char printErr[50];
+    ESP_LOGE(TAG,"ISO5693Command: ERROR code=%X",errorCode);
+    iso15693_printError(errorCode);
     if (errorCode >= 0xA0) { // custom command error codes
       return ISO15693_EC_CUSTOM_CMD_ERROR;
     }
-    else return (ISO15693ErrorCode)errorCode;
+    else return (ISO15693ErrorCode_t)errorCode;
   }
 
-  ESP_LOGD("NFC","Extension flag: %d", (responseFlags & (1<<3)));
+  ESP_LOGD(TAG,"ISO5693Command: Extension flag: %d", (responseFlags & (1<<3)));
 
   pn5180_clearIRQStatus(PN5180_RX_SOF_DET_IRQ_STAT | PN5180_IDLE_IRQ_STAT | PN5180_TX_IRQ_STAT | PN5180_RX_IRQ_STAT);
   return ISO15693_EC_OK;
 }
 
-static char iso15693_strerror(ISO15693ErrorCode errno) {  
-  char err[];
+void iso15693_printError(ISO15693ErrorCode_t errno) {
+  char err[50] = "";
   switch (errno) {
-    case EC_NO_CARD: err = "No card detected!"; break;
-    case ISO15693_EC_OK: err = "OK!"; break;
-    case ISO15693_EC_NOT_SUPPORTED: err = "Command is not supported!"; break;
-    case ISO15693_EC_NOT_RECOGNIZED: err = "Command is not recognized!"; break;
-    case ISO15693_EC_OPTION_NOT_SUPPORTED: err = "Option is not supported!"; break;
-    case ISO15693_EC_UNKNOWN_ERROR: err = "Unknown error!"; break;
-    case ISO15693_EC_BLOCK_NOT_AVAILABLE: err = "Specified block is not available!"; break;
-    case ISO15693_EC_BLOCK_ALREADY_LOCKED: err = "Specified block is already locked!"; break;
-    case ISO15693_EC_BLOCK_IS_LOCKED: err = "Specified block is locked and cannot be changed!"; break;
-    case ISO15693_EC_BLOCK_NOT_PROGRAMMED: err = "Specified block was not successfully programmed!"; break;
-    case ISO15693_EC_BLOCK_NOT_LOCKED: err = "Specified block was not successfully locked!"; break;
+    case EC_NO_CARD: strcat(err,"No card detected!"); break;
+    case ISO15693_EC_OK: strcat(err,"OK!"); break;
+    case ISO15693_EC_NOT_SUPPORTED: strcat(err,"Command is not supported!"); break;
+    case ISO15693_EC_NOT_RECOGNIZED: strcat(err,"Command is not recognized!"); break;
+    case ISO15693_EC_OPTION_NOT_SUPPORTED: strcat(err,"Option is not supported!"); break;
+    case ISO15693_EC_UNKNOWN_ERROR: strcat(err,"Unknown error!"); break;
+    case ISO15693_EC_BLOCK_NOT_AVAILABLE: strcat(err,"Specified block is not available!"); break;
+    case ISO15693_EC_BLOCK_ALREADY_LOCKED: strcat(err,"Specified block is already locked!"); break;
+    case ISO15693_EC_BLOCK_IS_LOCKED: strcat(err,"Specified block is locked and cannot be changed!"); break;
+    case ISO15693_EC_BLOCK_NOT_PROGRAMMED: strcat(err,"Specified block was not successfully programmed!"); break;
+    case ISO15693_EC_BLOCK_NOT_LOCKED: strcat(err,"Specified block was not successfully locked!"); break;
     default:
       if ((errno >= 0xA0) && (errno <= 0xDF)) {
-        err = "Custom command error code!";
+        strcat(err,"Custom command error code!");
       }
-      else err = "Undefined error code in ISO15693!";
+      else strcat(err,"Undefined error code in ISO15693!");
   }
-  return err;
+  ESP_LOGE(TAG, "ISO15693 Error: %s", err);
 }
 
-#ifdef FALSE
 /*
  * Read single block, code=20
  *
@@ -233,55 +253,33 @@ static char iso15693_strerror(ISO15693ErrorCode errno) {
  *  when ERROR flag is NOT set:
  *    SOF, Flags, BlockData (len=blockLength), CRC16, EOF
  */
-ISO15693ErrorCode PN5180ISO15693::readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize) {
-  //                            flags, cmd, uid,             blockNo
-  uint8_t readSingleBlock[] = { 0x22, 0x20, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
-  //                              |\- high data rate
-  //                              \-- no options, addressed by UID
+ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize) {
+  //                              flags, cmd, uid,             blockNo
+  uint8_t readSingleBlock[11] = { 0x22, 0x20, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
+  //                                |\- high data rate
+  //                                \-- no options, addressed by UID
   for (int i=0; i<8; i++) {
     readSingleBlock[2+i] = uid[i];
   }
 
-#ifdef DEBUG
-  PN5180DEBUG("Read Single Block #");
-  PN5180DEBUG(blockNo);
-  PN5180DEBUG(", size=");
-  PN5180DEBUG(blockSize);
-  PN5180DEBUG(": ");
-  for (int i=0; i<sizeof(readSingleBlock); i++) {
-    PN5180DEBUG(" ");
-    PN5180DEBUG(formatHex(readSingleBlock[i]));
-  }
-  PN5180DEBUG("\n");
-#endif
+  ESP_LOGD(TAG,"readSingleBlock: Read Single Block #%d, size=%d: ", blockNo, blockSize);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, readSingleBlock, sizeof(readSingleBlock), ESP_LOG_DEBUG);
 
   uint8_t *resultPtr;
-  ISO15693ErrorCode rc = issueISO15693Command(readSingleBlock, sizeof(readSingleBlock), &resultPtr);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(readSingleBlock, 11, &resultPtr);
   if (ISO15693_EC_OK != rc) {
     return rc;
   }
 
-  PN5180DEBUG("Value=");
-  
   for (int i=0; i<blockSize; i++) {
     blockData[i] = resultPtr[2+i];
-#ifdef DEBUG    
-    PN5180DEBUG(formatHex(blockData[i]));
-    PN5180DEBUG(" ");
-#endif    
   }
 
-#ifdef DEBUG
-  PN5180DEBUG(" ");
-  for (int i=0; i<blockSize; i++) {
-    char c = blockData[i];
-    if (isPrintable(c)) {
-      PN5180DEBUG(c);
-    }
-    else PN5180DEBUG(".");
-  }
-  PN5180DEBUG("\n");
-#endif
+  ESP_LOGD(TAG,"readSingleBlock: Value=");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, blockData, blockSize, ESP_LOG_DEBUG);
+
+  ESP_LOGD(TAG,"readSingleBlock: String=");
+  ESP_LOG_BUFFER_CHAR_LEVEL(TAG, blockData, blockSize, ESP_LOG_DEBUG);
 
   return ISO15693_EC_OK;
 }
@@ -314,7 +312,7 @@ ISO15693ErrorCode PN5180ISO15693::readSingleBlock(uint8_t *uid, uint8_t blockNo,
  *  when ERROR flag is NOT set:
  *    SOF, Resp.Flags, CRC16, EOF
  */
-ISO15693ErrorCode PN5180ISO15693::writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize) {
+ISO15693ErrorCode_t pn5180_writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize) {
   //                            flags, cmd, uid,             blockNo
   uint8_t writeSingleBlock[] = { 0x22, 0x21, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
   //                               |\- high data rate
@@ -333,21 +331,11 @@ ISO15693ErrorCode PN5180ISO15693::writeSingleBlock(uint8_t *uid, uint8_t blockNo
     writeCmd[pos++] = blockData[i];
   }
 
-#ifdef DEBUG
-  PN5180DEBUG("Write Single Block #");
-  PN5180DEBUG(blockNo);
-  PN5180DEBUG(", size=");
-  PN5180DEBUG(blockSize);
-  PN5180DEBUG(":");
-  for (int i=0; i<writeCmdSize; i++) {
-    PN5180DEBUG(" ");
-    PN5180DEBUG(formatHex(writeCmd[i]));
-  }
-  PN5180DEBUG("\n");
-#endif
+  ESP_LOGD(TAG,"writeSingleBlock: Write Single Block #%d, size=%d: ", blockNo, blockSize);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, writeCmd, writeCmdSize, ESP_LOG_DEBUG);
 
   uint8_t *resultPtr;
-  ISO15693ErrorCode rc = issueISO15693Command(writeCmd, writeCmdSize, &resultPtr);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(writeCmd, sizeof(writeCmd), &resultPtr);
   if (ISO15693_EC_OK != rc) {
     free(writeCmd);
     return rc;
@@ -403,78 +391,60 @@ ISO15693ErrorCode PN5180ISO15693::writeSingleBlock(uint8_t *uid, uint8_t blockNo
  *
  *    IC reference: The IC reference is on 8 bits and its meaning is defined by the IC manufacturer.
  */
-ISO15693ErrorCode PN5180ISO15693::getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks) {
-  uint8_t sysInfo[] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
+ISO15693ErrorCode_t pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks) {
+  uint8_t sysInfo[10] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
   for (int i=0; i<8; i++) {
     sysInfo[2+i] = uid[i];
   }
 
-#ifdef DEBUG
-  PN5180DEBUG("Get System Information");
-  for (int i=0; i<sizeof(sysInfo); i++) {
-    PN5180DEBUG(" ");
-    PN5180DEBUG(formatHex(sysInfo[i]));
-  }
-  PN5180DEBUG("\n");
-#endif
+  ESP_LOGD(TAG,"getSystemInfo: Get System Information");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, sysInfo, sizeof(sysInfo), ESP_LOG_DEBUG);
 
   uint8_t *readBuffer;
-  ISO15693ErrorCode rc = issueISO15693Command(sysInfo, sizeof(sysInfo), &readBuffer);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(sysInfo, 10, &readBuffer);
   if (ISO15693_EC_OK != rc) {
     return rc;
   }
 
+  uint64_t printUID = 0;
   for (int i=0; i<8; i++) {
     uid[i] = readBuffer[2+i];
+    printUID <<= 8;
+    printUID |= readBuffer[2+i];
   }
   
-#ifdef DEBUG
-  PN5180DEBUG("UID=");
-  for (int i=0; i<8; i++) {
-    PN5180DEBUG(formatHex(readBuffer[9-i]));  // UID has LSB first!
-    if (i<2) PN5180DEBUG(":");
-  }
-  PN5180DEBUG("\n");
-#endif
-  
-  uint8_t *p = &readBuffer[10];
+  ESP_LOGD(TAG, "getSystemInfo: UID=%llX", printUID);
 
+  uint8_t *p = &readBuffer[10];
   uint8_t infoFlags = readBuffer[1];
+
   if (infoFlags & 0x01) { // DSFID flag
-    PN5180DEBUG("DSFID=");  // Data storage format identifier
-    PN5180DEBUG(formatHex(uint8_t(*p++)));
-    PN5180DEBUG("\n");
+    ESP_LOGD(TAG, "getSystemInfo: DSFID=%X", (uint8_t)(*p++)); // Data storage format identifier
   }
-#ifdef DEBUG
-  else PN5180DEBUG(F("No DSFID\n"));  
-#endif
+  else ESP_LOGD(TAG,"getSystemInfo: No DSFID");  
   
   if (infoFlags & 0x02) { // AFI flag
     uint8_t afi = *p++;
-    PN5180DEBUG(F("AFI="));  // Application family identifier
-    PN5180DEBUG(formatHex(afi));
-    PN5180DEBUG(F(" - "));
+    char afi_string[30] = "";
     switch (afi >> 4) {
-      case 0: PN5180DEBUG(F("All families")); break;
-      case 1: PN5180DEBUG(F("Transport")); break;
-      case 2: PN5180DEBUG(F("Financial")); break;
-      case 3: PN5180DEBUG(F("Identification")); break;
-      case 4: PN5180DEBUG(F("Telecommunication")); break;
-      case 5: PN5180DEBUG(F("Medical")); break;
-      case 6: PN5180DEBUG(F("Multimedia")); break;
-      case 7: PN5180DEBUG(F("Gaming")); break;
-      case 8: PN5180DEBUG(F("Data storage")); break;
-      case 9: PN5180DEBUG(F("Item management")); break;
-      case 10: PN5180DEBUG(F("Express parcels")); break;
-      case 11: PN5180DEBUG(F("Postal services")); break;
-      case 12: PN5180DEBUG(F("Airline bags")); break;
-      default: PN5180DEBUG(F("Unknown")); break;
+      case 0: strcat(afi_string,"All families"); break;
+      case 1: strcat(afi_string,"Transport"); break;
+      case 2: strcat(afi_string,"Financial"); break;
+      case 3: strcat(afi_string,"Identification"); break;
+      case 4: strcat(afi_string,"Telecommunication"); break;
+      case 5: strcat(afi_string,"Medical"); break;
+      case 6: strcat(afi_string,"Multimedia"); break;
+      case 7: strcat(afi_string,"Gaming"); break;
+      case 8: strcat(afi_string,"Data storage"); break;
+      case 9: strcat(afi_string,"Item management"); break;
+      case 10: strcat(afi_string,"Express parcels"); break;
+      case 11: strcat(afi_string,"Postal services"); break;
+      case 12: strcat(afi_string,"Airline bags"); break;
+      default: strcat(afi_string,"Unknown"); break;
     }
-    PN5180DEBUG("\n");
+    ESP_LOGD(TAG,"getSystemInfo: AFI=%X - %s", afi, afi_string);  // Application family identifier
   }
-#ifdef DEBUG
-  else PN5180DEBUG(F("No AFI\n"));
-#endif
+  else ESP_LOGD(TAG,"getSystemInfo: No AFI");
 
   if (infoFlags & 0x04) { // VICC Memory size
     *numBlocks = *p++;
@@ -484,26 +454,14 @@ ISO15693ErrorCode PN5180ISO15693::getSystemInfo(uint8_t *uid, uint8_t *blockSize
     *blockSize = *blockSize + 1; // range: 1-32
     *numBlocks = *numBlocks + 1; // range: 1-256
 
-    PN5180DEBUG("VICC MemSize=");
-    PN5180DEBUG(uint16_t(*blockSize) * (*numBlocks));
-    PN5180DEBUG(" BlockSize=");
-    PN5180DEBUG(*blockSize);
-    PN5180DEBUG(" NumBlocks=");
-    PN5180DEBUG(*numBlocks);
-    PN5180DEBUG("\n");
+    ESP_LOGD(TAG, "getSystemInfo: VICC MemSize=%d BlockSize=%d NumBlocks=%d", (uint16_t)(*blockSize) * (*numBlocks), *blockSize, *numBlocks);
   }
-#ifdef DEBUG
-  else PN5180DEBUG(F("No VICC memory size\n"));
-#endif
+  else ESP_LOGD(TAG, "getSystemInfo: No VICC memory size");
    
   if (infoFlags & 0x08) { // IC reference
-    PN5180DEBUG("IC Ref=");
-    PN5180DEBUG(formatHex(uint8_t(*p++)));
-    PN5180DEBUG("\n");
+    ESP_LOGD(TAG, "getSystemInfo: IC Ref=%X", (uint8_t)(*p++));
   }
-#ifdef DEBUG
-  else PN5180DEBUG(F("No IC ref\n"));
-#endif
+  else ESP_LOGD(TAG,"getSystemInfo: No IC ref");
 
   return ISO15693_EC_OK;
 }
@@ -516,10 +474,10 @@ ISO15693ErrorCode PN5180ISO15693::getSystemInfo(uint8_t *uid, uint8_t *blockSize
  * The passwords that will be transmitted with the SET PASSWORD,ENABLEPRIVACY and DESTROY commands 
  * have to be calculated with the password and the random number (see Section 9.5.3.2 "SET PASSWORD")
  */
-ISO15693ErrorCode PN5180ISO15693::getRandomNumber(uint8_t *randomData) {
-  uint8_t getrandom[] = {0x02, 0xB2, 0x04};
+ISO15693ErrorCode_t pn5180_getRandomNumber(uint8_t *randomData) {
+  uint8_t getrandom[3] = {0x02, 0xB2, 0x04};
   uint8_t *readBuffer;
-  ISO15693ErrorCode rc = issueISO15693Command(getrandom, sizeof(getrandom), &readBuffer);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(getrandom, 3, &readBuffer);
   if (rc == ISO15693_EC_OK) {
     randomData[0] = readBuffer[1];
     randomData[1] = readBuffer[2];
@@ -532,15 +490,15 @@ ISO15693ErrorCode PN5180ISO15693::getRandomNumber(uint8_t *randomData) {
  * to access the different protected functionalities of the following commands. 
  * The SET PASSWORD command has to be executed just once for the related passwords if the label is powered
  */
-ISO15693ErrorCode PN5180ISO15693::setPassword(uint8_t identifier, uint8_t *password, uint8_t *random) {
-  uint8_t setPassword[] = {0x02, 0xB3, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00};
+ISO15693ErrorCode_t pn5180_setPassword(uint8_t identifier, uint8_t *password, uint8_t *random) {
+  uint8_t setPassword[8] = {0x02, 0xB3, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00};
   uint8_t *readBuffer;
   setPassword[3] = identifier;
   setPassword[4] = password[0] ^ random[0];
   setPassword[5] = password[1] ^ random[1];
   setPassword[6] = password[2] ^ random[0];
   setPassword[7] = password[3] ^ random[1];
-  ISO15693ErrorCode rc = issueISO15693Command(setPassword, sizeof(setPassword), &readBuffer);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(setPassword, 8, &readBuffer);
   return rc;
 }
 
@@ -549,43 +507,80 @@ ISO15693ErrorCode PN5180ISO15693::setPassword(uint8_t identifier, uint8_t *passw
  * Privacy mode if the Privacy password is correct. The ICODE SLIX2 will not respond to
  * any command except GET RANDOM NUMBER and SET PASSWORD
  */
-ISO15693ErrorCode PN5180ISO15693::enablePrivacy(uint8_t *password, uint8_t *random) {
-  uint8_t setPrivacy[] = {0x02, 0xBA, 0x04, 0x00, 0x00, 0x00, 0x00};
+ISO15693ErrorCode_t pn5180_enablePrivacy(uint8_t *password, uint8_t *random) {
+  uint8_t setPrivacy[7] = {0x02, 0xBA, 0x04, 0x00, 0x00, 0x00, 0x00};
   uint8_t *readBuffer;
   setPrivacy[3] = password[0] ^ random[0];
   setPrivacy[4] = password[1] ^ random[1];
   setPrivacy[5] = password[2] ^ random[0];
   setPrivacy[6] = password[3] ^ random[1];
-  ISO15693ErrorCode rc = issueISO15693Command(setPrivacy, sizeof(setPrivacy), &readBuffer);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(setPrivacy, 7, &readBuffer);
   return rc;
 }
 
 
 // disable privacy mode for ICODE SLIX2 tag with given password
-ISO15693ErrorCode PN5180ISO15693::disablePrivacyMode(uint8_t *password) {
+ISO15693ErrorCode_t pn5180_disablePrivacyMode(uint8_t *password) {
   // get a random number from the tag
   uint8_t random[]= {0x00, 0x00};
-  ISO15693ErrorCode rc = getRandomNumber(random);
+  ISO15693ErrorCode_t rc = pn5180_getRandomNumber(random);
   if (rc != ISO15693_EC_OK) {
     return rc;
   }
   
   // set password to disable privacy mode 
-  rc = setPassword(0x04, password, random);
+  rc = pn5180_setPassword(0x04, password, random);
   return rc; 
 }
 
 // enable privacy mode for ICODE SLIX2 tag with given password 
-ISO15693ErrorCode PN5180ISO15693::enablePrivacyMode(uint8_t *password) {
+ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password) {
   // get a random number from the tag
   uint8_t random[]= {0x00, 0x00};
-  ISO15693ErrorCode rc = getRandomNumber(random);
+  ISO15693ErrorCode_t rc = pn5180_getRandomNumber(random);
   if (rc != ISO15693_EC_OK) {
     return rc;
   }
   
   // enable privacy command to lock the tag
-  rc = enablePrivacy(password, random);
+  rc = pn5180_enablePrivacy(password, random);
   return rc; 
 }
-#endif
+
+/*
+ * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
+ *
+ * UID: AA:BB:CC:DDDDDDDDDD
+ * 
+ * AA - Always E0
+ * BB - Manufacturer Code (0x04 = NXP Semiconductors)
+ * CC - Tag Type (0x01 = ICODE SLIX)
+ * DDDDDDDDDD - Random ID
+ */
+void iso15693_printUID(uint8_t* decimalUID, uint8_t len){
+  uint8_t hexSeg;
+  uint8_t uid[len];
+  uint8_t j = 0;
+  char hexChar[3] = "";
+  hexChar[2] = '\0';
+  char hexNumber[255] = "";
+  printf("\033[32mI (%ld) %s: UID=\033[0m", esp_log_timestamp(), TAG);
+  for(int i=len-1; i>=0; i--){
+    uid[i] = decimalUID[i];
+    hexChar[0] = 48;
+    hexChar[1] = 48;
+    j = 1;
+    while(uid[i] != 0) {
+      hexSeg = uid[i] % 16;
+      //To convert integer into character
+      if(hexSeg < 10) hexSeg += 48;
+      else hexSeg += 55;
+      hexChar[j] = (char)hexSeg;
+      uid[i] /= 16;
+      j--;
+    }
+    printf("\033[32m%s\033[0m", hexChar);
+    if(i >= len - 3) printf("\033[32m:\033[0m");
+  }
+  printf("\n");
+}

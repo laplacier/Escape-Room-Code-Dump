@@ -8,25 +8,33 @@
 #include "driver/gpio.h"
 #include "iso15693.h"
 #include "pn5180.h"
-
+static char* TAG = "NFC";
 void showIRQStatus(uint32_t irqStatus);
 
 void app_main(void)
 {
-    pn5180_init();
-    while(1){
-        showIRQStatus(pn5180_getIRQStatus());
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        uint8_t product[2];
-        pn5180_readEEprom(PN5180_PRODUCT_VERSION, product);
-        ESP_LOGI("NFC","Product version: %d.%d",product[1],product[0]);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        uint8_t firmware[2];
-        pn5180_readEEprom(PN5180_FIRMWARE_VERSION, firmware);
-        ESP_LOGI("NFC","Firmware version: %d.%d",firmware[1],firmware[0]);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+  pn5180_init();
+  while(1){
+    showIRQStatus(pn5180_getIRQStatus());
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    uint8_t product[2];
+    pn5180_readEEprom(PN5180_PRODUCT_VERSION, product, 2);
+    ESP_LOGI("NFC","Product version: %d.%d",product[1],product[0]);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    uint8_t firmware[2];
+    pn5180_readEEprom(PN5180_FIRMWARE_VERSION, firmware, 2);
+    ESP_LOGI("NFC","Firmware version: %d.%d",firmware[1],firmware[0]);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    uint8_t uid[8];
+    ISO15693ErrorCode_t rc = pn5180_getInventory(uid);
+    if (ISO15693_EC_OK != rc) {
+      iso15693_printError(rc);
     }
-    //ESP_LOGI("NFC","Firmware Version: %d.%d",pn5180_rxBuffer[1],pn5180_rxBuffer[0]);
+    else{
+      iso15693_printUID(uid, 8);
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
 }
 
 void showIRQStatus(uint32_t irqStatus) {
