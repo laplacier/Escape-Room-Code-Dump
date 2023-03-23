@@ -57,7 +57,7 @@ esp_err_t pn5180_setupRF(void) {
  * Response format: SOF, Resp.Flags, DSFID, UID, CRC16, EOF
  *
  */
-ISO15693ErrorCode_t pn5180_getInventory(uint8_t *uid) {
+ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
   //                      Flags,  CMD, maskLen
   uint8_t inventory[3] = { 0x26, 0x01, 0x00 };
   //                         |\- inventory flag + high data rate
@@ -65,21 +65,71 @@ ISO15693ErrorCode_t pn5180_getInventory(uint8_t *uid) {
   ESP_LOGD(TAG,"getInventory: Get Inventory...");
 
   for (int i=0; i<8; i++) {
-    uid[i] = 0;  
+    nfc->uid_raw[i] = 0;  
   }
   
   uint8_t *readBuffer;
   ISO15693ErrorCode_t rc = pn5180_ISO15693Command(inventory, 3, &readBuffer);
-  if (ISO15693_EC_OK != rc) {
-    return rc;
-  }
-  uint64_t printUID = 0;
+  if (ISO15693_EC_OK != rc) return rc;
+  if(readBuffer[9] != 224) return ISO15693_EC_NOT_RECOGNIZED; // UIDs always start with E0h (224d)
+
+  // Record raw UID data
   for (int i=0; i<8; i++) {
-    uid[i] = readBuffer[2+i];
-    printUID <<= 8;
-    printUID |= readBuffer[2+i];
+    nfc->uid_raw[i] = readBuffer[2+i];
   }
-  ESP_LOGD(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X, UID: 0x%llX", readBuffer[0], readBuffer[1], printUID);
+
+  /*
+   * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
+   *  
+   * The 64-bit unique identifier (UID) is programmed during the production process according
+   * to ISO/IEC 15693-3 and cannot be changed afterwards.
+   * 
+   * UID: AA:BB:CC:DDDDDDDDDD
+   * 
+   * AA - Always E0
+   * BB - Manufacturer Code (0x04 = NXP Semiconductors)
+   * CC - Tag Type (0x01 = ICODE SLIX)
+   * DDDDDDDDDD - Random ID
+   */
+
+  // Determine Manufacturer
+  uint8_t lengthMan = sizeof(manufacturerCode[nfc->uid_raw[6]]);
+  for(int i=0; i<lengthMan; i++){
+    nfc->manufacturer[i] = manufacturerCode[nfc->uid_raw[6]][i];
+  }
+  nfc->manufacturer[lengthMan] = '\0';
+
+  // Record IC type
+  nfc->type = nfc->uid_raw[5];
+
+  // Properly format unique 5 byte UID
+  for(int i=0; i<sizeof(nfc->uid); i++){
+    nfc->uid[i] = '\0';
+  }
+  uint8_t hexSeg;
+  uint8_t temp;
+  uint8_t j;
+  char hexChar[3] = "";
+  hexChar[2] = '\0';
+  for(int i=4; i>=0; i--){
+    temp = nfc->uid_raw[i];
+    hexChar[0] = 48;
+    hexChar[1] = 48;
+    j = 1;
+    while(temp != 0) {
+      hexSeg = temp % 16;
+      //To convert integer into character
+      if(hexSeg < 10) hexSeg += 48;
+      else hexSeg += 55;
+      hexChar[j] = (char)hexSeg;
+      temp /= 16;
+      j--;
+    }
+    strcat(nfc->uid, hexChar);
+    if(i > 0) strcat(nfc->uid,":");
+  }
+
+  ESP_LOGD(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X", readBuffer[0], readBuffer[1]);
 
   return ISO15693_EC_OK;
 }
@@ -544,46 +594,6 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password) {
   return rc; 
 }
 
-/*
- * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
- *  
- * The 64-bit unique identifier (UID) is programmed during the production process according
- * to ISO/IEC 15693-3 and cannot be changed afterwards.
- * 
- * UID: AA:BB:CC:DDDDDDDDDD
- * 
- * AA - Always E0
- * BB - Manufacturer Code (0x04 = NXP Semiconductors)
- * CC - Tag Type (0x01 = ICODE SLIX)
- * DDDDDDDDDD - Random ID
- */
-void iso15693_printUID(uint8_t* decimalUID, uint8_t len){
-  uint8_t hexSeg;
-  uint8_t uid[len];
-  uint8_t j = 0;
-  char hexChar[3] = "";
-  hexChar[2] = '\0';
-  printf("\033[32mI (%ld) %s: UID=", esp_log_timestamp(), TAG);
-  for(int i=len-1; i>=0; i--){
-    uid[i] = decimalUID[i];
-    hexChar[0] = 48;
-    hexChar[1] = 48;
-    j = 1;
-    while(uid[i] != 0) {
-      hexSeg = uid[i] % 16;
-      //To convert integer into character
-      if(hexSeg < 10) hexSeg += 48;
-      else hexSeg += 55;
-      hexChar[j] = (char)hexSeg;
-      uid[i] /= 16;
-      j--;
-    }
-    printf("%s", hexChar);
-    if(i >= len - 3) printf(":");
-  }
-  printf("\n\033[0m");
-}
-
 void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize){
   if(ESP_LOG_INFO <= esp_log_level_get(tag)){
     // Hex print
@@ -607,3 +617,4 @@ void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize)
     printf("\n\033[0m");
   }
 }
+

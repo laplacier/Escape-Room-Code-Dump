@@ -26,19 +26,19 @@ void app_main(void)
   ESP_LOGI(TAG,"Firmware version: %d.%d",firmware[1],firmware[0]);
   vTaskDelay(pdMS_TO_TICKS(1000));
   while(1){
-    uint8_t uid[8];
-    //struct ISO15693UID uid;
-    ISO15693ErrorCode_t rc = pn5180_getInventory(uid);
+    //uint8_t uid[8];
+    ISO15693NFC_t nfc;
+    ISO15693ErrorCode_t rc = pn5180_getInventory(&nfc);
     if (ISO15693_EC_OK != rc) {
       iso15693_printError(rc);
     }
     else{
-      iso15693_printUID(uid, 8);
+      ESP_LOGI(TAG, "UID=%s, Manufacturer=%s", nfc.uid, nfc.manufacturer);
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     uint8_t blockSize, numBlocks;
-    rc = pn5180_getSystemInfo(uid, &blockSize, &numBlocks);
+    rc = pn5180_getSystemInfo(nfc.uid_raw, &blockSize, &numBlocks);
     if (ISO15693_EC_OK != rc) {
       iso15693_printError(rc);
     }
@@ -48,7 +48,7 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(1000));
     uint8_t readBuffer[blockSize];
     for (int i=0; i<numBlocks; i++) {
-      rc = pn5180_readSingleBlock(uid, i, readBuffer, blockSize);
+      rc = pn5180_readSingleBlock(nfc.uid_raw, i, readBuffer, blockSize);
       if (ISO15693_EC_OK != rc) {
         ESP_LOGE(TAG, "Error in readSingleBlock #%d:", i);
         iso15693_printError(rc);
