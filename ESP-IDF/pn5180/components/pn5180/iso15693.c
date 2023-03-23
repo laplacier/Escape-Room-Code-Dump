@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -57,7 +58,6 @@ esp_err_t pn5180_setupRF(void) {
  *
  */
 ISO15693ErrorCode_t pn5180_getInventory(uint8_t *uid) {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   //                      Flags,  CMD, maskLen
   uint8_t inventory[3] = { 0x26, 0x01, 0x00 };
   //                         |\- inventory flag + high data rate
@@ -139,7 +139,6 @@ ISO15693ErrorCode_t pn5180_getInventory(uint8_t *uid) {
  *   >0 = Error code
  */
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr) {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   ESP_LOGD(TAG,"ISO5693Command: Issue Command 0x%X...", cmd[1]);
   pn5180_sendData(cmd, cmdLen, 0);
   vTaskDelay(pdMS_TO_TICKS(10));
@@ -157,7 +156,7 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
   }
 
   retries = 5;
-  while (!(irqR & PN5180_RX_IRQ_STAT) && retries > 0) {   // wait for RF field to set up (max 500ms)
+  while (!(irqR & PN5180_RX_IRQ_STAT) && retries > 0) {   // wait for RX end of frame (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
 	  retries--;
   }
@@ -187,7 +186,6 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
   uint8_t responseFlags = (*resultPtr)[0];
   if (responseFlags & (1<<0)) { // error flag
     uint8_t errorCode = (*resultPtr)[1];
-    char printErr[50];
     ESP_LOGE(TAG,"ISO5693Command: ERROR code=%X",errorCode);
     iso15693_printError(errorCode);
     if (errorCode >= 0xA0) { // custom command error codes
@@ -277,9 +275,6 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_
 
   ESP_LOGD(TAG,"readSingleBlock: Value=");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, blockData, blockSize, ESP_LOG_DEBUG);
-
-  ESP_LOGD(TAG,"readSingleBlock: String=");
-  ESP_LOG_BUFFER_CHAR_LEVEL(TAG, blockData, blockSize, ESP_LOG_DEBUG);
 
   return ISO15693_EC_OK;
 }
@@ -392,7 +387,8 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8
  *    IC reference: The IC reference is on 8 bits and its meaning is defined by the IC manufacturer.
  */
 ISO15693ErrorCode_t pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks) {
-  uint8_t sysInfo[10] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
+  //esp_log_level_set(TAG, ESP_LOG_DEBUG);
+  uint8_t sysInfo[] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
   for (int i=0; i<8; i++) {
     sysInfo[2+i] = uid[i];
   }
@@ -462,6 +458,7 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8
     ESP_LOGD(TAG, "getSystemInfo: IC Ref=%X", (uint8_t)(*p++));
   }
   else ESP_LOGD(TAG,"getSystemInfo: No IC ref");
+  //esp_log_level_set(TAG, ESP_LOG_INFO);
 
   return ISO15693_EC_OK;
 }
@@ -549,7 +546,10 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password) {
 
 /*
  * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
- *
+ *  
+ * The 64-bit unique identifier (UID) is programmed during the production process according
+ * to ISO/IEC 15693-3 and cannot be changed afterwards.
+ * 
  * UID: AA:BB:CC:DDDDDDDDDD
  * 
  * AA - Always E0
@@ -563,8 +563,7 @@ void iso15693_printUID(uint8_t* decimalUID, uint8_t len){
   uint8_t j = 0;
   char hexChar[3] = "";
   hexChar[2] = '\0';
-  char hexNumber[255] = "";
-  printf("\033[32mI (%ld) %s: UID=\033[0m", esp_log_timestamp(), TAG);
+  printf("\033[32mI (%ld) %s: UID=", esp_log_timestamp(), TAG);
   for(int i=len-1; i>=0; i--){
     uid[i] = decimalUID[i];
     hexChar[0] = 48;
@@ -579,8 +578,32 @@ void iso15693_printUID(uint8_t* decimalUID, uint8_t len){
       uid[i] /= 16;
       j--;
     }
-    printf("\033[32m%s\033[0m", hexChar);
-    if(i >= len - 3) printf("\033[32m:\033[0m");
+    printf("%s", hexChar);
+    if(i >= len - 3) printf(":");
   }
-  printf("\n");
+  printf("\n\033[0m");
+}
+
+void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize){
+  if(ESP_LOG_INFO <= esp_log_level_get(tag)){
+    // Hex print
+    printf("\033[32mI (%ld) %s: ", esp_log_timestamp(), tag);
+    for (int i=0; i<blockSize; i++) {
+      if(dataBuf[i] < 16) printf("0");
+      printf("%X", dataBuf[i]);
+      if(i < blockSize - 1) printf(":");
+    }
+    
+    printf(" ");
+    
+    // String print
+    for (int i=0; i<blockSize; i++) {
+      char c = dataBuf[i];
+      if (isprint(c)) {
+        printf("%c",c);
+      }
+      else printf(".");
+    }
+    printf("\n\033[0m");
+  }
 }

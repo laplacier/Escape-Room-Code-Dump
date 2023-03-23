@@ -292,4 +292,7 @@ uint32_t pn5180_getIRQStatus();
 esp_err_t pn5180_clearIRQStatus(uint32_t irqMask);
 
 PN5180TransceiveState_t getTransceiveState();
+
+void printIRQStatus(uint32_t irqStatus);
+
 #endif /* PN5180_H */

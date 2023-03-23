@@ -64,7 +64,6 @@ static esp_err_t pn5180_busy_wait(uint32_t timeout);
 // Functions //
 ///////////////
 void pn5180_init(void){
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   gpio_config_t io_conf = {};
 
   // NSS and Reset are outputs
@@ -119,7 +118,6 @@ void pn5180_init(void){
 }
 
 static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   esp_err_t ret;
   ////////////////////
   // Initialization //
@@ -168,7 +166,6 @@ static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8
  * over the SPI interface
  */
 static esp_err_t pn5180_busy_wait(uint32_t timeout){
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint32_t retries = timeout / 10;
   while (gpio_get_level(PIN_NUM_BUSY) && retries > 0){
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -182,7 +179,6 @@ static esp_err_t pn5180_busy_wait(uint32_t timeout){
 }
 
 esp_err_t pn5180_reset(void) {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint32_t retries = 10;
   gpio_set_level(PIN_NUM_RST, 0);
   vTaskDelay(pdMS_TO_TICKS(1));
@@ -292,7 +288,6 @@ esp_err_t pn5180_loadRFConfig(uint8_t txConf, uint8_t rxConf) {
  * RF_ON - 0x16
  */
 esp_err_t pn5180_setRF_on() {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
   pn5180_command(cmd, 2, 0, 0);
 
@@ -334,7 +329,6 @@ esp_err_t pn5180_setRF_off() {
  * SEND_DATA - 0x09
  */
 esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits) {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   if (len > 260){
     ESP_LOGE(TAG, "sendData: Length of data exceeds 260 bytes");
     return ESP_ERR_INVALID_SIZE;
@@ -505,4 +499,29 @@ esp_err_t pn5180_switchToLPCD(uint16_t wakeupCounterInMs) {
   // switch mode to LPCD 
   uint8_t cmd[4] = { PN5180_SWITCH_MODE, 0x01, (uint8_t)(wakeupCounterInMs & 0xFF), (uint8_t)((wakeupCounterInMs >> 8U) & 0xFF) };
   return pn5180_command(cmd, sizeof(cmd), 0, 0);
+}
+
+void printIRQStatus(uint32_t irqStatus) {
+  char states[255] = "";
+  if (irqStatus & (1<< 0)) strcat(states,"RX ");
+  if (irqStatus & (1<< 1)) strcat(states,"TX ");
+  if (irqStatus & (1<< 2)) strcat(states,"IDLE ");
+  if (irqStatus & (1<< 3)) strcat(states,"MODE_DETECTED ");
+  if (irqStatus & (1<< 4)) strcat(states,"CARD_ACTIVATED ");
+  if (irqStatus & (1<< 5)) strcat(states,"STATE_CHANGE ");
+  if (irqStatus & (1<< 6)) strcat(states,"RFOFF_DET ");
+  if (irqStatus & (1<< 7)) strcat(states,"RFON_DET ");
+  if (irqStatus & (1<< 8)) strcat(states,"TX_RFOFF ");
+  if (irqStatus & (1<< 9)) strcat(states,"TX_RFON ");
+  if (irqStatus & (1<<10)) strcat(states,"RF_ACTIVE_ERROR ");
+  if (irqStatus & (1<<11)) strcat(states,"TIMER0 ");
+  if (irqStatus & (1<<12)) strcat(states,"TIMER1 ");
+  if (irqStatus & (1<<13)) strcat(states,"TIMER2 ");
+  if (irqStatus & (1<<14)) strcat(states,"RX_SOF_DET ");
+  if (irqStatus & (1<<15)) strcat(states,"RX_SC_DET ");
+  if (irqStatus & (1<<16)) strcat(states,"TEMPSENS_ERROR ");
+  if (irqStatus & (1<<17)) strcat(states,"GENERAL_ERROR ");
+  if (irqStatus & (1<<18)) strcat(states,"HV_ERROR ");
+  if (irqStatus & (1<<19)) strcat(states,"LPCD ");
+  ESP_LOGI(TAG,"IRQ_Status: %s",states);
 }

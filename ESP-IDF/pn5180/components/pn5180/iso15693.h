@@ -36,6 +36,12 @@ typedef enum {
   ISO15693_EC_CUSTOM_CMD_ERROR = 0xA0
 } ISO15693ErrorCode_t;
 
+struct ISO15693UID {
+  char manufacturer[50];
+  uint8_t type;
+  uint8_t raw[8];
+}
+
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr);
 ISO15693ErrorCode_t pn5180_getInventory(uint8_t *uid);
 ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
@@ -51,4 +57,5 @@ ISO15693ErrorCode_t pn5180_disablePrivacyMode(uint8_t *password);
 esp_err_t pn5180_setupRF(void);
 void iso15693_printError(ISO15693ErrorCode_t errno);  
 void iso15693_printUID(uint8_t* decimalUID, uint8_t len);
+void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize);
 #endif /* PN5180ISO15693_H */
