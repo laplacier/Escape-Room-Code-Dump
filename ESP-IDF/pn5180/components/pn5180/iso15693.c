@@ -111,7 +111,7 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
   uint8_t j;
   char hexChar[3] = "";
   hexChar[2] = '\0';
-  for(int i=4; i>=0; i--){
+  for(int i=7; i>=0; i--){
     temp = nfc->uid_raw[i];
     hexChar[0] = 48;
     hexChar[1] = 48;
@@ -301,16 +301,16 @@ void iso15693_printError(ISO15693ErrorCode_t errno) {
  *  when ERROR flag is NOT set:
  *    SOF, Flags, BlockData (len=blockLength), CRC16, EOF
  */
-ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize) {
+ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) {
   //                              flags, cmd, uid,             blockNo
   uint8_t readSingleBlock[11] = { 0x22, 0x20, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
   //                                |\- high data rate
   //                                \-- no options, addressed by UID
   for (int i=0; i<8; i++) {
-    readSingleBlock[2+i] = uid[i];
+    readSingleBlock[2+i] = nfc->uid_raw[i];
   }
 
-  ESP_LOGD(TAG,"readSingleBlock: Read Single Block #%d, size=%d: ", blockNo, blockSize);
+  ESP_LOGD(TAG,"readSingleBlock: Read Single Block #%d, size=%d: ", blockNo, nfc->blockSize);
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, readSingleBlock, sizeof(readSingleBlock), ESP_LOG_DEBUG);
 
   uint8_t *resultPtr;
@@ -319,12 +319,13 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_
     return rc;
   }
 
-  for (int i=0; i<blockSize; i++) {
-    blockData[i] = resultPtr[2+i];
+  uint8_t startAddr = blockNo * nfc->blockSize;
+  for (int i=0; i<nfc->blockSize; i++) {
+    nfc->blockData[startAddr + i] = resultPtr[2+i];
   }
 
   ESP_LOGD(TAG,"readSingleBlock: Value=");
-  ESP_LOG_BUFFER_HEX_LEVEL(TAG, blockData, blockSize, ESP_LOG_DEBUG);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, nfc->blockData, nfc->blockSize, ESP_LOG_DEBUG);
 
   return ISO15693_EC_OK;
 }
@@ -357,26 +358,29 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_
  *  when ERROR flag is NOT set:
  *    SOF, Resp.Flags, CRC16, EOF
  */
-ISO15693ErrorCode_t pn5180_writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize) {
+ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) {
   //                            flags, cmd, uid,             blockNo
   uint8_t writeSingleBlock[] = { 0x22, 0x21, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
   //                               |\- high data rate
   //                               \-- no options, addressed by UID
 
-  uint8_t writeCmdSize = sizeof(writeSingleBlock) + blockSize;
+  uint8_t writeCmdSize = sizeof(writeSingleBlock) + nfc->blockSize;
   uint8_t *writeCmd = (uint8_t*)malloc(writeCmdSize);
   uint8_t pos = 0;
   writeCmd[pos++] = writeSingleBlock[0];
   writeCmd[pos++] = writeSingleBlock[1];
   for (int i=0; i<8; i++) {
-    writeCmd[pos++] = uid[i];
+    writeCmd[pos++] = nfc->uid_raw[i];
   }
   writeCmd[pos++] = blockNo;
-  for (int i=0; i<blockSize; i++) {
-    writeCmd[pos++] = blockData[i];
+  uint8_t startAddr = blockNo * nfc->blockSize;
+  // Start of actual data creation loop
+  for (int i=0; i<nfc->blockSize; i++) {
+    writeCmd[pos++] = nfc->blockData[startAddr + i];
   }
+  // End of data loop
 
-  ESP_LOGD(TAG,"writeSingleBlock: Write Single Block #%d, size=%d: ", blockNo, blockSize);
+  ESP_LOGD(TAG,"writeSingleBlock: Write Single Block #%d, size=%d: ", blockNo, nfc->blockSize);
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, writeCmd, writeCmdSize, ESP_LOG_DEBUG);
 
   uint8_t *resultPtr;
@@ -436,11 +440,11 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8
  *
  *    IC reference: The IC reference is on 8 bits and its meaning is defined by the IC manufacturer.
  */
-ISO15693ErrorCode_t pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks) {
+ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
   //esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint8_t sysInfo[] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
   for (int i=0; i<8; i++) {
-    sysInfo[2+i] = uid[i];
+    sysInfo[2+i] = nfc->uid_raw[i];
   }
 
   ESP_LOGD(TAG,"getSystemInfo: Get System Information");
@@ -452,62 +456,61 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8
     return rc;
   }
 
-  uint64_t printUID = 0;
   for (int i=0; i<8; i++) {
-    uid[i] = readBuffer[2+i];
-    printUID <<= 8;
-    printUID |= readBuffer[2+i];
+    nfc->uid_raw[i] = readBuffer[2+i];
   }
-  
-  ESP_LOGD(TAG, "getSystemInfo: UID=%llX", printUID);
 
   uint8_t *p = &readBuffer[10];
   uint8_t infoFlags = readBuffer[1];
-
   if (infoFlags & 0x01) { // DSFID flag
-    ESP_LOGD(TAG, "getSystemInfo: DSFID=%X", (uint8_t)(*p++)); // Data storage format identifier
+    nfc->dsfid = (uint8_t)(*p++);
+    ESP_LOGD(TAG, "getSystemInfo: DSFID=%X", nfc->dsfid); // Data storage format identifier
   }
-  else ESP_LOGD(TAG,"getSystemInfo: No DSFID");  
+  else{
+    nfc->dsfid = 0;
+    ESP_LOGD(TAG,"getSystemInfo: No DSFID");
+  }
   
   if (infoFlags & 0x02) { // AFI flag
     uint8_t afi = *p++;
-    char afi_string[30] = "";
-    switch (afi >> 4) {
-      case 0: strcat(afi_string,"All families"); break;
-      case 1: strcat(afi_string,"Transport"); break;
-      case 2: strcat(afi_string,"Financial"); break;
-      case 3: strcat(afi_string,"Identification"); break;
-      case 4: strcat(afi_string,"Telecommunication"); break;
-      case 5: strcat(afi_string,"Medical"); break;
-      case 6: strcat(afi_string,"Multimedia"); break;
-      case 7: strcat(afi_string,"Gaming"); break;
-      case 8: strcat(afi_string,"Data storage"); break;
-      case 9: strcat(afi_string,"Item management"); break;
-      case 10: strcat(afi_string,"Express parcels"); break;
-      case 11: strcat(afi_string,"Postal services"); break;
-      case 12: strcat(afi_string,"Airline bags"); break;
-      default: strcat(afi_string,"Unknown"); break;
+    afi >>= 4;
+    uint8_t afiLength = sizeof(afi_string[afi]);
+    for(int i=0; i<afiLength; i++){
+      nfc->afi[i] = afi_string[afi][i]; // Application family identifier
     }
-    ESP_LOGD(TAG,"getSystemInfo: AFI=%X - %s", afi, afi_string);  // Application family identifier
+    nfc->afi[afiLength] = '\0';
   }
-  else ESP_LOGD(TAG,"getSystemInfo: No AFI");
+  else{
+    nfc->afi[0] = '\0';
+    ESP_LOGD(TAG,"getSystemInfo: No AFI");
+  }
 
   if (infoFlags & 0x04) { // VICC Memory size
-    *numBlocks = *p++;
-    *blockSize = *p++;
-    *blockSize = (*blockSize) & 0x1f;
+    if(nfc->blockData != NULL) free(nfc->blockData); // Free previously malloc'd blockData
+    nfc->numBlocks = *p++;
+    nfc->blockSize = *p++;
+    nfc->blockSize &= 0x1f;
+    nfc->numBlocks++;
+    nfc->blockSize++;
 
-    *blockSize = *blockSize + 1; // range: 1-32
-    *numBlocks = *numBlocks + 1; // range: 1-256
-
-    ESP_LOGD(TAG, "getSystemInfo: VICC MemSize=%d BlockSize=%d NumBlocks=%d", (uint16_t)(*blockSize) * (*numBlocks), *blockSize, *numBlocks);
+    ESP_LOGD(TAG, "getSystemInfo: VICC MemSize=%d BlockSize=%d NumBlocks=%d", nfc->blockSize * nfc->numBlocks, nfc->blockSize, nfc->numBlocks);
+    nfc->blockData = (uint8_t*)malloc( (nfc->blockSize) * (nfc->numBlocks) );
+    if(nfc->blockData == NULL) ESP_LOGE(TAG, "Failed to allocate heap for blockData");
   }
-  else ESP_LOGD(TAG, "getSystemInfo: No VICC memory size");
+  else{
+    nfc->blockSize = 0;
+    nfc->numBlocks = 0;
+    ESP_LOGD(TAG, "getSystemInfo: No VICC memory size");
+  }
    
   if (infoFlags & 0x08) { // IC reference
-    ESP_LOGD(TAG, "getSystemInfo: IC Ref=%X", (uint8_t)(*p++));
+    nfc->ic_ref = (uint8_t)(*p++);
+    ESP_LOGD(TAG, "getSystemInfo: IC Ref=%X", nfc->ic_ref);
   }
-  else ESP_LOGD(TAG,"getSystemInfo: No IC ref");
+  else{
+    nfc->ic_ref = 0; 
+    ESP_LOGD(TAG,"getSystemInfo: No IC ref");
+  }
   //esp_log_level_set(TAG, ESP_LOG_INFO);
 
   return ISO15693_EC_OK;
@@ -594,13 +597,14 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password) {
   return rc; 
 }
 
-void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize){
+void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize, uint8_t blockNum){
   if(ESP_LOG_INFO <= esp_log_level_get(tag)){
+    uint8_t startAddr = blockSize * blockNum;
     // Hex print
     printf("\033[32mI (%ld) %s: ", esp_log_timestamp(), tag);
     for (int i=0; i<blockSize; i++) {
-      if(dataBuf[i] < 16) printf("0");
-      printf("%X", dataBuf[i]);
+      if(dataBuf[startAddr + i] < 16) printf("0");
+      printf("%X", dataBuf[startAddr + i]);
       if(i < blockSize - 1) printf(":");
     }
     
@@ -608,7 +612,7 @@ void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize)
     
     // String print
     for (int i=0; i<blockSize; i++) {
-      char c = dataBuf[i];
+      char c = dataBuf[startAddr + i];
       if (isprint(c)) {
         printf("%c",c);
       }

@@ -39,18 +39,22 @@ typedef enum {
 typedef struct {
   char manufacturer[100];
   uint8_t type;
-  char uid[20];
+  char uid[30];
   uint8_t uid_raw[8];
+  uint8_t dsfid;
+  char afi[30];
+  uint8_t ic_ref;
   // The physical memory of an ISO15693 VICC is organized in the form of blocks or pages of fixed size. Up to 256 blocks can be addressed and a block size can be up to 32 bytes.
   uint8_t numBlocks;
-  uint8_t blockSize;
+  uint16_t blockSize;
+  uint8_t* blockData;
 } ISO15693NFC_t;
 
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr);
 ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc);
-ISO15693ErrorCode_t pn5180_readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
-ISO15693ErrorCode_t pn5180_writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
-ISO15693ErrorCode_t pn5180_getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks);
+ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
+ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
+ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc);
 // ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
 ISO15693ErrorCode_t pn5180_getRandomNumber(uint8_t *randomData);
 ISO15693ErrorCode_t pn5180_setPassword(uint8_t identifier, uint8_t *password, uint8_t *random);
@@ -60,7 +64,7 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password);
 ISO15693ErrorCode_t pn5180_disablePrivacyMode(uint8_t *password); 
 esp_err_t pn5180_setupRF(void);
 void iso15693_printError(ISO15693ErrorCode_t errno);  
-void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize);
+void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize, uint8_t blockNum);
 
 // Publicly available from https://www.kartenbezogene-identifier.de/de/chiphersteller-kennungen.html
 static const char manufacturerCode[][100] = {
@@ -174,5 +178,21 @@ static const char manufacturerCode[][100] = {
   "ISSM (FR)",
   "Wisesec Ltd (IL)",
   "Holtek (TW)"
+};
+
+static const char afi_string[][30] = {
+  "All families",
+  "Transport",
+  "Financial",
+  "Identification",
+  "Telecommunication",
+  "Medical",
+  "Multimedia",
+  "Gaming",
+  "Data storage",
+  "Item management",
+  "Express parcels",
+  "Postal services",
+  "Airline bags"
 };
 #endif /* PN5180ISO15693_H */
