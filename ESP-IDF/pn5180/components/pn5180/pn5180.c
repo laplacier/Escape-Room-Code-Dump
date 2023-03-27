@@ -37,7 +37,7 @@
 #define PIN_NUM_RST  17
 spi_device_handle_t nfc;
 
-static char* TAG = "pn5180.c";
+static const char* TAG = "pn5180.c";
 uint8_t readBuffer[508];
 
 ////////////////////////
@@ -136,7 +136,10 @@ static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8
   ESP_LOGD(TAG, "command: Write data:");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, sendBuffer, sendBufferLen, ESP_LOG_DEBUG);
   ret = pn5180_txn(nfc, sendBuffer, sendBufferLen, NULL, 0); // 2. 3. 4.
-  ESP_ERROR_CHECK(ret);
+  if(ret != ESP_OK){
+    ESP_LOGE(TAG, "pn5180_command: SPI transaction write failed");
+    return ret;
+  }
 
   // Finish if write-only command
   if ((0 == recvBuffer) || (0 == recvBufferLen)) return ret;
@@ -153,9 +156,12 @@ static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8
   // Receive Response //
   //////////////////////
   ret = pn5180_txn(nfc, recvBuffer, recvBufferLen, recvBuffer, recvBufferLen); // 6. 7. 8.
-  ESP_ERROR_CHECK(ret);
+  if(ret != ESP_OK){
+    ESP_LOGE(TAG, "pn5180_command: SPI transaction read failed");
+    return ret;
+  }
 
-  ESP_LOGD(TAG, "command: Read data:\n");
+  ESP_LOGD(TAG, "command: Read data:");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, recvBuffer, recvBufferLen, ESP_LOG_DEBUG);
   
   return ret;
@@ -344,35 +350,8 @@ esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits) {
   pn5180_writeRegisterWithAndMask(PN5180_SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
   pn5180_writeRegisterWithOrMask(PN5180_SYSTEM_CONFIG, 0x00000003);   // Transceive Command
   vTaskDelay(pdMS_TO_TICKS(10));
-  /*
-   * Transceive command; initiates a transceive cycle.
-   * Note: Depending on the value of the Initiator bit, a
-   * transmission is started or the receiver is enabled
-   * Note: The transceive command does not finish
-   * automatically. It stays in the transceive cycle until
-   * stopped via the IDLE/StopCom command
-   */
 
-  uint32_t rfStatus;
-  if (pn5180_readRegister(PN5180_RF_STATUS, &rfStatus) != ESP_OK) {
-    ESP_LOGE(TAG, "sendData: Failed to read RF_STATUS register.");
-    return ESP_ERR_INVALID_RESPONSE;
-  }
-
-  /*
-   * TRANSCEIVE_STATEs:
-   *  0 - idle
-   *  1 - wait transmit
-   *  2 - transmitting
-   *  3 - wait receive
-   *  4 - wait for data
-   *  5 - receiving
-   *  6 - loopback
-   *  7 - reserved
-   */
-  ESP_LOGD(TAG, "sendData: rfStatus=%ld", rfStatus);
-  PN5180TransceiveState_t state = ((rfStatus >> 24) & 0x07);
-
+  PN5180TransceiveState_t state = getTransceiveState();
   ESP_LOGD(TAG,"sendData: state=%d",(uint8_t)(state));
   if (PN5180_TS_WaitTransmit != state){
     ESP_LOGE(TAG, "sendData: TransceiveState not WaitTransmit");
@@ -394,15 +373,16 @@ uint8_t* pn5180_readData(int len) {
   return readBuffer;
 }
 
-#ifdef FALSE
 /*
  * Get TRANSCEIVE_STATE from RF_STATUS register
  */
 
 PN5180TransceiveState_t getTransceiveState() {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint32_t rfStatus;
-  if (!pn5180_readRegister(PN5180_RF_STATUS, &rfStatus)) {
+  esp_err_t ret;
+  ret = pn5180_readRegister(PN5180_RF_STATUS, &rfStatus);
+  if(ret != ESP_OK) {
+    ESP_LOGE(TAG, "Error reading RF_STATUS register");
     return PN5180_TS_Idle;
   }
 
@@ -417,11 +397,12 @@ PN5180TransceiveState_t getTransceiveState() {
    *  6 - loopback
    *  7 - reserved
    */
-  ESP_LOGI(TAG, "getTransceiveState: rfStatus=%ld", rfStatus);
+  ESP_LOGD(TAG, "getTransceiveState: rfStatus=%ld", rfStatus);
   uint8_t state = ((rfStatus >> 24) & 0x07);
   return state;
 }
 
+#ifdef FALSE
 /*
  * READ_DATA - 0x0A
  * This command reads data from the RF reception buffer, after a successful reception.
@@ -501,7 +482,7 @@ esp_err_t pn5180_switchToLPCD(uint16_t wakeupCounterInMs) {
   return pn5180_command(cmd, sizeof(cmd), 0, 0);
 }
 
-void printIRQStatus(uint32_t irqStatus) {
+void printIRQStatus(const char* tag, uint32_t irqStatus) {
   char states[255] = "";
   if (irqStatus & (1<< 0)) strcat(states,"RX ");
   if (irqStatus & (1<< 1)) strcat(states,"TX ");
@@ -523,5 +504,119 @@ void printIRQStatus(uint32_t irqStatus) {
   if (irqStatus & (1<<17)) strcat(states,"GENERAL_ERROR ");
   if (irqStatus & (1<<18)) strcat(states,"HV_ERROR ");
   if (irqStatus & (1<<19)) strcat(states,"LPCD ");
-  ESP_LOGI(TAG,"IRQ_Status: %s",states);
+  ESP_LOGI(tag,"IRQ_Status: %s",states);
 }
+
+// Publicly available from https://www.kartenbezogene-identifier.de/de/chiphersteller-kennungen.html
+const char manufacturerCode[110][100] = {
+  "Unknown",
+  "Motorola (UK)",
+  "STMicroelectronics SA (FR)",
+  "Hitachi Ltd (JP)",
+  "NXP Semiconductors (DE)",
+  "Infineon Technologies AG (DE)",
+  "Cylink (US)",
+  "Texas Instruments (FR)",
+  "Fujitsu Limited (JP)",
+  "Matsushita Electronics Corporation, Semiconductor Company (JP)",
+  "NEC (JP)",
+  "Oki Electric Industry Co Ltd (JP)",
+  "Toshiba Corp (JP)",
+  "Mitsubishi Electric Corp (JP)",
+  "Samsung Electronics Co Ltd (KR)",
+  "Hynix (KR)",
+  "LG-Semiconductors Co Ltd (KR)",
+  "Emosyn-EM Microelectronics (US)",
+  "INSIDE Technology (FR)",
+  "ORGA Kartensysteme GmbH (DE)",
+  "Sharp Corporation (JP)",
+  "ATMEL (FR)",
+  "EM Microelectronic-Marin (CH)",
+  "SMARTRAC TECHNOLOGY GmbH (DE)",
+  "ZMD AG (DE)",
+  "XICOR Inc (US)",
+  "Sony Corporation (JP)",
+  "Malaysia Microelectronic Solutions Sdn Bhd (MY)",
+  "Emosyn (US)",
+  "Shanghai Fudan Microelectronics Co Ltd (CN)",
+  "Magellan Technology Pty Limited (AU)",
+  "Melexis NV BO (CH)",
+  "Renesas Technology Corp (JP)",
+  "TAGSYS (FR)",
+  "Transcore (US)",
+  "Shanghai Belling Corp Ltd (CN)",
+  "Masktech Germany GmbH (DE)",
+  "Innovision Research and Technology Plc (UK)",
+  "Hitachi ULSI Systems Co Ltd (JP)",
+  "Yubico AB (SE)",
+  "Ricoh (JP)",
+  "ASK (FR)",
+  "Unicore Microsystems LLC (RU)",
+  "Dallas semiconductor/Maxim (US)",
+  "Impinj Inc (US)",
+  "RightPlug Alliance (US)",
+  "Broadcom Corporation (US)",
+  "MStar Semiconductor Inc (TW)",
+  "BeeDar Technology Inc (US)",
+  "RFIDsec (DK)",
+  "Schweizer Electronic AG (DE)",
+  "AMIC Technology Corp (TW)",
+  "Mikron JSC (RU)",
+  "Fraunhofer Institute for Photonic Microsystems (DE)",
+  "IDS Microship AG (CH)",
+  "Kovio (US)",
+  "HMT Microelectronic Ltd (CH)",
+  "Silicon Craft Technology (TH)",
+  "Advanced Film Device Inc. (JP)",
+  "Nitecrest Ltd (UK)",
+  "Verayo Inc. (US)",
+  "HID Global (US)",
+  "Productivity Engineering Gmbh (DE)",
+  "Austriamicrosystems AG (reserved) (AT)",
+  "Gemalto SA (FR)",
+  "Renesas Electronics Corporation (JP)",
+  "3Alogics Inc (KR)",
+  "Top TroniQ Asia Limited (Hong Kong)",
+  "GenTag Inc (USA)",
+  "Invengo Information Technology Co. Ltd (CN)",
+  "Guangzhou Sysur Microelectronics, Inc (CN)",
+  "CEITEC S.A. (BR)",
+  "Shanghai Quanray Electronics Co. Ltd. (CN)",
+  "MediaTek Inc (TW)",
+  "Angstrem PJSC (RU)",
+  "Celisic Semiconductor (Hong Kong) Limited (CN)",
+  "LEGIC Identsystems AG (CH)",
+  "Balluff GmbH (DE)",
+  "Oberthur Technologies (FR)",
+  "Silterra Malaysia Sdn. Bhd. (MY)",
+  "DELTA Danish Electronics, Light & Acoustics (DK)",
+  "Giesecke & Devrient GmbH (DE)",
+  "Shenzhen China Vision Microelectronics Co., Ltd. (CN)",
+  "Shanghai Feiju Microelectronics Co. Ltd. (CN)",
+  "Intel Corporation (US)",
+  "Microsensys GmbH (DE)",
+  "Sonix Technology Co., Ltd. (TW)",
+  "Qualcomm Technologies Inc (US)",
+  "Realtek Semiconductor Corp (TW)",
+  "Freevision Technologies Co. Ltd (CN)",
+  "Giantec Semiconductor Inc. (CN)",
+  "JSC Angstrem-T (RU)",
+  "STARCHIP France",
+  "SPIRTECH (FR)",
+  "GANTNER Electronic GmbH (AT)",
+  "Nordic Semiconductor (NO)",
+  "Verisiti Inc (US)",
+  "Wearlinks Technology Inc. (CN)",
+  "Userstar Information Systems Co., Ltd (TW)",
+  "Pragmatic Printing Ltd. (UK)",
+  "Associacao do Laboratorio de Sistemas Integraveis Tecnologico - LSI-TEC (BR)",
+  "Tendyron Corporation (CN)",
+  "MUTO Smart Co., Ltd.(KR)",
+  "ON Semiconductor (US)",
+  "TÜBİTAK BİLGEM (TR)",
+  "Huada Semiconductor Co., Ltd (CN)",
+  "SEVENEY (FR)",
+  "ISSM (FR)",
+  "Wisesec Ltd (IL)",
+  "Holtek (TW)"
+};

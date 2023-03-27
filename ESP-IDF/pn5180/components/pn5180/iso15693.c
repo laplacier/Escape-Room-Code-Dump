@@ -1,22 +1,22 @@
-// NAME: PN5180ISO15693.h
-//
-// DESC: ISO15693 protocol on NXP Semiconductors PN5180 module for Arduino.
-//
-// Copyright (c) 2018 by Andreas Trappmann. All rights reserved.
-//
-// This file is part of the PN5180 library for the Arduino environment.
-//
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-// Lesser General Public License for more details.
-//
-//#define DEBUG 1
+/* NAME: iso156933.h
+ *
+ * DESC: ISO15693 protocol on NXP Semiconductors PN5180 module for ESP-IDF.
+ * 
+ * Forked from https://github.com/ATrappmann/PN5180-Library
+ * Copyright (c) 2019 by Dirk Carstensen. All rights reserved.
+ *
+ * This file is part of the PN5180 component for ESP-IDF.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +26,7 @@
 #include "freertos/task.h"
 #include "driver/spi_master.h"
 #include "iso15693.h"
-static char* TAG = "iso15693.c";
+static const char* TAG = "iso15693.c";
 
 esp_err_t pn5180_setupRF(void) {
   esp_err_t ret;
@@ -70,8 +70,14 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
   
   uint8_t *readBuffer;
   ISO15693ErrorCode_t rc = pn5180_ISO15693Command(inventory, 3, &readBuffer);
-  if (ISO15693_EC_OK != rc) return rc;
-  if(readBuffer[9] != 224) return ISO15693_EC_NOT_RECOGNIZED; // UIDs always start with E0h (224d)
+  if (ISO15693_EC_OK != rc){
+    ESP_LOGE(TAG, "getInventory: Error issuing inventory command");
+    return rc;
+  }
+  if(readBuffer[9] != 224){
+    ESP_LOGE(TAG, "getInventory: UID in unrecognized format! %X should be E0", readBuffer[9]);
+    return ISO15693_EC_NOT_RECOGNIZED; // UIDs always start with E0h (224d)
+  }
 
   // Record raw UID data
   for (int i=0; i<8; i++) {
@@ -84,49 +90,23 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
    * The 64-bit unique identifier (UID) is programmed during the production process according
    * to ISO/IEC 15693-3 and cannot be changed afterwards.
    * 
-   * UID: AA:BB:CC:DDDDDDDDDD
+   * UID: AA:BB:CCDDDDDDDDDD
    * 
    * AA - Always E0
    * BB - Manufacturer Code (0x04 = NXP Semiconductors)
-   * CC - Tag Type (0x01 = ICODE SLIX)
+   * CC - Random ID, sometimes used by manufacturer for Tag Type (0x01 = ICODE SLIX)
    * DDDDDDDDDD - Random ID
    */
 
-  // Determine Manufacturer
-  uint8_t lengthMan = sizeof(manufacturerCode[nfc->uid_raw[6]]);
-  for(int i=0; i<lengthMan; i++){
-    nfc->manufacturer[i] = manufacturerCode[nfc->uid_raw[6]][i];
-  }
-  nfc->manufacturer[lengthMan] = '\0';
+  // Record Manufacturer code
+  nfc->manufacturer = nfc->uid_raw[6];
 
   // Record IC type
   nfc->type = nfc->uid_raw[5];
 
-  // Properly format unique 5 byte UID
-  for(int i=0; i<sizeof(nfc->uid); i++){
-    nfc->uid[i] = '\0';
-  }
-  uint8_t hexSeg;
-  uint8_t temp;
-  uint8_t j;
-  char hexChar[3] = "";
-  hexChar[2] = '\0';
-  for(int i=7; i>=0; i--){
-    temp = nfc->uid_raw[i];
-    hexChar[0] = 48;
-    hexChar[1] = 48;
-    j = 1;
-    while(temp != 0) {
-      hexSeg = temp % 16;
-      //To convert integer into character
-      if(hexSeg < 10) hexSeg += 48;
-      else hexSeg += 55;
-      hexChar[j] = (char)hexSeg;
-      temp /= 16;
-      j--;
-    }
-    strcat(nfc->uid, hexChar);
-    if(i > 0) strcat(nfc->uid,":");
+  // Record unique 6 byte UID in LSBFIRST order
+  for(int i=2; i<8; i++){
+    nfc->uid[i-2] = nfc->uid_raw[7-i];
   }
 
   ESP_LOGD(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X", readBuffer[0], readBuffer[1]);
@@ -193,7 +173,7 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
   pn5180_sendData(cmd, cmdLen, 0);
   vTaskDelay(pdMS_TO_TICKS(10));
 
-  uint8_t retries = 5;
+  uint8_t retries = 50;
   uint32_t irqR = pn5180_getIRQStatus();
   while (!(irqR & PN5180_RX_SOF_DET_IRQ_STAT) && retries > 0) {   // wait for RF field to set up (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -205,7 +185,7 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
     return EC_NO_CARD;
   }
 
-  retries = 5;
+  retries = 50;
   while (!(irqR & PN5180_RX_IRQ_STAT) && retries > 0) {   // wait for RX end of frame (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
 	  retries--;
@@ -315,9 +295,7 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) 
 
   uint8_t *resultPtr;
   ISO15693ErrorCode_t rc = pn5180_ISO15693Command(readSingleBlock, 11, &resultPtr);
-  if (ISO15693_EC_OK != rc) {
-    return rc;
-  }
+  if (ISO15693_EC_OK != rc) return rc;
 
   uint8_t startAddr = blockNo * nfc->blockSize;
   for (int i=0; i<nfc->blockSize; i++) {
@@ -380,18 +358,14 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo)
   }
   // End of data loop
 
-  ESP_LOGD(TAG,"writeSingleBlock: Write Single Block #%d, size=%d: ", blockNo, nfc->blockSize);
-  ESP_LOG_BUFFER_HEX_LEVEL(TAG, writeCmd, writeCmdSize, ESP_LOG_DEBUG);
+  ESP_LOGI(TAG,"writeSingleBlock: Write Single Block #%d, size=%d: ", blockNo, nfc->blockSize);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, writeCmd, writeCmdSize, ESP_LOG_INFO);
 
   uint8_t *resultPtr;
-  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(writeCmd, sizeof(writeCmd), &resultPtr);
-  if (ISO15693_EC_OK != rc) {
-    free(writeCmd);
-    return rc;
-  }
-
+  //ISO15693ErrorCode_t rc = pn5180_ISO15693Command(writeCmd, writeCmdSize, &resultPtr);
+  ISO15693ErrorCode_t rc = ISO15693_EC_OK;
   free(writeCmd);
-  return ISO15693_EC_OK;
+  return rc;
 }
 
 /*
@@ -472,16 +446,11 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
   }
   
   if (infoFlags & 0x02) { // AFI flag
-    uint8_t afi = *p++;
-    afi >>= 4;
-    uint8_t afiLength = sizeof(afi_string[afi]);
-    for(int i=0; i<afiLength; i++){
-      nfc->afi[i] = afi_string[afi][i]; // Application family identifier
-    }
-    nfc->afi[afiLength] = '\0';
+    nfc->afi = *p++;
+    nfc->afi >>= 4;
   }
   else{
-    nfc->afi[0] = '\0';
+    nfc->afi = (sizeof(afi_string)/sizeof(afi_string[0])) - 1;
     ESP_LOGD(TAG,"getSystemInfo: No AFI");
   }
 
@@ -622,3 +591,19 @@ void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize,
   }
 }
 
+const char afi_string[14][30] = {
+  "All families",
+  "Transport",
+  "Financial",
+  "Identification",
+  "Telecommunication",
+  "Medical",
+  "Multimedia",
+  "Gaming",
+  "Data storage",
+  "Item management",
+  "Express parcels",
+  "Postal services",
+  "Airline bags",
+  "Unknown"
+};

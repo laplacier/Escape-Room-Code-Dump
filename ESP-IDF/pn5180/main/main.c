@@ -9,23 +9,43 @@
 #include "driver/gpio.h"
 #include "iso15693.h"
 #include "pn5180.h"
-static char* TAG = "main.c";
+static const char* TAG = "main.c";
 void showIRQStatus(uint32_t irqStatus);
+void printUID(const char* tag, uint8_t* uid, uint8_t len);
+
+extern const char afi_string[14][30];
+extern const char manufacturerCode[110][100];
+
+#define WRITE_ENABLED 1
+bool flag_written = 0;
 
 void app_main(void)
 {
-  ESP_LOGI(TAG,"Free heap=%ld bytes", esp_get_free_heap_size());
-  ESP_LOGI(TAG,"Free task heap=%d bytes", uxTaskGetStackHighWaterMark(NULL));
-  pn5180_init();
-  printIRQStatus(pn5180_getIRQStatus());
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  ESP_LOGI(TAG, "pn5180 example using ISO15493 NFC tags");
+
+  pn5180_init(); // Initialize SPI communication, set up ISO15693, activate RF
+
+  // PN5180 Product version
   uint8_t product[2];
   pn5180_readEEprom(PN5180_PRODUCT_VERSION, product, 2);
+  if(0xff == product[1]){
+    ESP_LOGE(TAG, "Initialization failed. Reset to restart.");
+    while(1) vTaskDelay(portMAX_DELAY);
+  }
   ESP_LOGI(TAG,"Product version: %d.%d",product[1],product[0]);
-  vTaskDelay(pdMS_TO_TICKS(1000));
+
+  
+  // PN5180 Firmware version
   uint8_t firmware[2];
   pn5180_readEEprom(PN5180_FIRMWARE_VERSION, firmware, 2);
   ESP_LOGI(TAG,"Firmware version: %d.%d",firmware[1],firmware[0]);
+
+  // PN5180 EEPROM version
+  uint8_t eeprom[2];
+  pn5180_readEEprom(PN5180_EEPROM_VERSION, eeprom, 2);
+  ESP_LOGI(TAG,"EEPROM version: %d.%d",eeprom[1],eeprom[0]);
+
+  ESP_LOGI(TAG, "Starting read cycle...");
   vTaskDelay(pdMS_TO_TICKS(1000));
 
   while(1){
@@ -36,7 +56,8 @@ void app_main(void)
       iso15693_printError(rc);
     }
     else{
-      ESP_LOGI(TAG, "UID=%s, Manufacturer=%s", nfc.uid, nfc.manufacturer);
+      printUID(TAG, nfc.uid_raw, sizeof(nfc.uid_raw));
+      ESP_LOGI(TAG, "Manufacturer=%s", manufacturerCode[nfc.manufacturer]);
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -46,7 +67,7 @@ void app_main(void)
       iso15693_printError(rc);
     }
     else{
-      ESP_LOGI(TAG, "System info retrieved: DSFID=%d, AFI=%s, blockSize=%d, numBlocks=%d, IC Ref=%d", nfc.dsfid, nfc.afi, nfc.blockSize, nfc.numBlocks, nfc.ic_ref);
+      ESP_LOGI(TAG, "System info retrieved: DSFID=%d, AFI=%s, blockSize=%d, numBlocks=%d, IC Ref=%d", nfc.dsfid, afi_string[nfc.afi], nfc.blockSize, nfc.numBlocks, nfc.ic_ref);
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -63,6 +84,37 @@ void app_main(void)
         iso15693_printGeneric(TAG, nfc.blockData, nfc.blockSize, i);
       }
     }
+
+#ifdef WRITE_ENABLED
+    if(!flag_written){
+      uint8_t dataFiller = 0;
+      for (int i=0; i<nfc.numBlocks; i++) {
+        for (int j=0; j<nfc.blockSize; j++) {
+          nfc.blockData[(nfc.blockSize*i) + j] = dataFiller++;
+        }
+        rc = pn5180_writeSingleBlock(&nfc, i);
+        if (ISO15693_EC_OK == rc) {
+          ESP_LOGI(TAG, "Wrote block #%d", i);
+        }
+        else {
+          ESP_LOGE(TAG, "Error in writeSingleBlock #%d: ", i);
+          iso15693_printError(rc);
+          break;
+        }
+      }
+      flag_written = 1;
+    }
+#endif /* WRITE_ENABLED */
     vTaskDelay(pdMS_TO_TICKS(5000));
   }
+}
+
+void printUID(const char* tag, uint8_t* uid, uint8_t len){
+  printf("\033[32mI (%ld) %s: UID=", esp_log_timestamp(), tag);
+  for(int i=7; i>=0; i--){
+    if(uid[i] < 16) printf("0");
+    printf("%X", uid[i]);
+    if(i > 0) printf(":");
+  }
+  printf("\n\033[0m");
 }

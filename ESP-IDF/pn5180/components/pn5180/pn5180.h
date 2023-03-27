@@ -73,17 +73,6 @@
 #define PN5180_EEPROM_VERSION      (0x14)
 #define PN5180_IRQ_PIN_CONFIG      (0x1A)
 
-typedef enum {
-  PN5180_TS_Idle = 0,
-  PN5180_TS_WaitTransmit = 1,
-  PN5180_TS_Transmitting = 2,
-  PN5180_TS_WaitReceive = 3,
-  PN5180_TS_WaitForData = 4,
-  PN5180_TS_Receiving = 5,
-  PN5180_TS_LoopBack = 6,
-  PN5180_TS_RESERVED = 7
-} PN5180TransceiveState_t;
-
 // PN5180 IRQ_STATUS
 #define PN5180_RX_IRQ_STAT         	  (1<<0)  // End of RF receiption IRQ
 #define PN5180_TX_IRQ_STAT         	  (1<<1)  // End of RF transmission IRQ
@@ -95,6 +84,19 @@ typedef enum {
 #define PN5180_RX_SOF_DET_IRQ_STAT 	  (1<<14) // RF SOF Detection IRQ
 #define PN5180_GENERAL_ERROR_IRQ_STAT (1<<17) // General error IRQ
 #define PN5180_LPCD_IRQ_STAT 			    (1<<19) // LPCD Detection IRQ
+
+typedef enum {
+  PN5180_TS_Idle = 0,
+  PN5180_TS_WaitTransmit = 1,
+  PN5180_TS_Transmitting = 2,
+  PN5180_TS_WaitReceive = 3,
+  PN5180_TS_WaitForData = 4,
+  PN5180_TS_Receiving = 5,
+  PN5180_TS_LoopBack = 6,
+  PN5180_TS_RESERVED = 7
+} PN5180TransceiveState_t;
+
+extern const char manufacturerCode[110][100];
 
 /**
  * @brief  Initialize PN5180 device
@@ -293,6 +295,6 @@ esp_err_t pn5180_clearIRQStatus(uint32_t irqMask);
 
 PN5180TransceiveState_t getTransceiveState();
 
-void printIRQStatus(uint32_t irqStatus);
+void printIRQStatus(const char* tag, uint32_t irqStatus);
 
 #endif /* PN5180_H */
