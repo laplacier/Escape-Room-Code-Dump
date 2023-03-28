@@ -16,7 +16,7 @@ void printUID(const char* tag, uint8_t* uid, uint8_t len);
 extern const char afi_string[14][30];
 extern const char manufacturerCode[110][100];
 
-#define WRITE_ENABLED 1
+//#define WRITE_ENABLED 1
 bool flag_written = 0;
 
 void app_main(void)
@@ -71,7 +71,7 @@ void app_main(void)
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // Read blocks one at a time
+    /*// Read blocks one at a time
     for (int i=0; i<nfc.numBlocks; i++) {
       rc = pn5180_readSingleBlock(&nfc, i);
       if (ISO15693_EC_OK != rc) {
@@ -83,9 +83,19 @@ void app_main(void)
         ESP_LOGI(TAG, "Reading block#%d", i);
         iso15693_printGeneric(TAG, nfc.blockData, nfc.blockSize, i);
       }
+    }*/
+    rc = pn5180_readMultipleBlock(&nfc, 0, 25);
+    if (ISO15693_EC_OK != rc) {
+      ESP_LOGE(TAG, "Error in readMultipleBlock #0-%d:", 24);
+      iso15693_printError(rc);
+    }
+    else{
+      ESP_LOGI(TAG, "Reading multiple blocks #0-%d", 24);
+      iso15693_printGeneric(TAG, nfc.blockData, nfc.blockSize*28, 0);
     }
 
 #ifdef WRITE_ENABLED
+    // This loop writes to the NFC tag one time per reset
     if(!flag_written){
       uint8_t dataFiller = 0;
       for (int i=0; i<nfc.numBlocks; i++) {

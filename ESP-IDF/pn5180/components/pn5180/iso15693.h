@@ -57,6 +57,7 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
 ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc);
 ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
 ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
+ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo, uint8_t numBlock);
 ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc);
 // ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
 ISO15693ErrorCode_t pn5180_getRandomNumber(uint8_t *randomData);
@@ -67,5 +68,5 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password);
 ISO15693ErrorCode_t pn5180_disablePrivacyMode(uint8_t *password); 
 esp_err_t pn5180_setupRF(void);
 void iso15693_printError(ISO15693ErrorCode_t errno);
-void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize, uint8_t blockNum);
+void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint16_t blockSize, uint8_t blockNum);
 #endif /* PN5180ISO15693_H */

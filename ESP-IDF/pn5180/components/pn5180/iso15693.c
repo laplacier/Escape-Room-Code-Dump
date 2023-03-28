@@ -62,11 +62,8 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
   uint8_t inventory[3] = { 0x26, 0x01, 0x00 };
   //                         |\- inventory flag + high data rate
   //                         \-- 1 slot: only one card, no AFI field present
+  bool flag_realloc = 0;
   ESP_LOGD(TAG,"getInventory: Get Inventory...");
-
-  for (int i=0; i<8; i++) {
-    nfc->uid_raw[i] = 0;  
-  }
   
   uint8_t *readBuffer;
   ISO15693ErrorCode_t rc = pn5180_ISO15693Command(inventory, 3, &readBuffer);
@@ -83,7 +80,6 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
   for (int i=0; i<8; i++) {
     nfc->uid_raw[i] = readBuffer[2+i];
   }
-
   /*
    * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
    *  
@@ -169,11 +165,12 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
  *   >0 = Error code
  */
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr) {
+  //pn5180_clearIRQStatus(PN5180_RX_SOF_DET_IRQ_STAT | PN5180_IDLE_IRQ_STAT | PN5180_TX_IRQ_STAT | PN5180_RX_IRQ_STAT);
   ESP_LOGD(TAG,"ISO5693Command: Issue Command 0x%X...", cmd[1]);
   pn5180_sendData(cmd, cmdLen, 0);
   vTaskDelay(pdMS_TO_TICKS(10));
 
-  uint8_t retries = 50;
+  uint16_t retries = 50;
   uint32_t irqR = pn5180_getIRQStatus();
   while (!(irqR & PN5180_RX_SOF_DET_IRQ_STAT) && retries > 0) {   // wait for RF field to set up (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
@@ -181,23 +178,23 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
     retries--;
   }
   if (0 == (irqR & PN5180_RX_SOF_DET_IRQ_STAT)){
+    printIRQStatus(TAG, irqR);
     ESP_LOGE(TAG, "ISO15693Command: No RX_SOF_DET IRQ. State=%ld", irqR);
     return EC_NO_CARD;
   }
-
   retries = 50;
   while (!(irqR & PN5180_RX_IRQ_STAT) && retries > 0) {   // wait for RX end of frame (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
 	  retries--;
   }
-  if(!(irqR & PN5180_RX_IRQ_STAT)){ 
-    ESP_LOGE(TAG, "ISO15693Command: No EOF_RX IRQ. State=%ld", irqR);
-    return EC_NO_CARD;
-  }
-  
   uint32_t rxStatus;
   pn5180_readRegister(PN5180_RX_STATUS, &rxStatus);
   uint16_t len = (uint16_t)(rxStatus & 0x000001ff);
+  if(!(irqR & PN5180_RX_IRQ_STAT) && !len){
+    printIRQStatus(TAG, irqR);
+    ESP_LOGE(TAG, "ISO15693Command: No EOF_RX IRQ and RX_STATUS: length = 0. State=%ld", irqR);
+    return EC_NO_CARD;
+  }
   
   ESP_LOGD(TAG,"ISO5693Command: RX-Status=0x%lX, len=%d", rxStatus, len);
 
@@ -209,8 +206,9 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
 
   uint32_t irqStatus = pn5180_getIRQStatus();
   if (0 == (PN5180_RX_SOF_DET_IRQ_STAT & irqStatus)) { // no card detected
-     pn5180_clearIRQStatus(PN5180_TX_IRQ_STAT | PN5180_IDLE_IRQ_STAT);
-     return EC_NO_CARD;
+    printIRQStatus(TAG, irqR);
+    pn5180_clearIRQStatus(PN5180_TX_IRQ_STAT | PN5180_IDLE_IRQ_STAT);
+    return EC_NO_CARD;
   }
 
   uint8_t responseFlags = (*resultPtr)[0];
@@ -299,7 +297,7 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) 
 
   uint8_t startAddr = blockNo * nfc->blockSize;
   for (int i=0; i<nfc->blockSize; i++) {
-    nfc->blockData[startAddr + i] = resultPtr[2+i];
+    nfc->blockData[startAddr + i] = resultPtr[1+i];
   }
 
   ESP_LOGD(TAG,"readSingleBlock: Value=");
@@ -369,6 +367,64 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo)
 }
 
 /*
+ * Read multiple block, code=23
+ *
+ * Request format: SOF, Req.Flags, ReadMultipleBlock, UID (opt.), FirstBlockNumber, numBlocks, CRC16, EOF
+ * Response format:
+ *  when ERROR flag is set:
+ *    SOF, Resp.Flags, ErrorCode, CRC16, EOF
+ *
+ *     Response Flags:
+  *    xxxx.3xx0
+  *         |||\_ Error flag: 0=no error, 1=error detected, see error field
+  *         \____ Extension flag: 0=no extension, 1=protocol format is extended
+  *
+  *  If Error flag is set, the following error codes are defined:
+  *    01 = The command is not supported, i.e. the request code is not recognized.
+  *    02 = The command is not recognized, i.e. a format error occurred.
+  *    03 = The option is not supported.
+  *    0F = Unknown error.
+  *    10 = The specific block is not available.
+  *    11 = The specific block is already locked and cannot be locked again.
+  *    12 = The specific block is locked and cannot be changed.
+  *    13 = The specific block was not successfully programmed.
+  *    14 = The specific block was not successfully locked.
+  *    A0-DF = Custom command error codes
+ *
+ *  when ERROR flag is NOT set:
+ *    SOF, Flags, BlockData (len=nfc->blockSize * numBlock), CRC16, EOF
+ */
+ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo, uint8_t numBlock) {
+  if(blockNo > nfc->numBlocks-1){
+    ESP_LOGE(TAG, "Starting block exceeds length of data");
+    return ISO15693_EC_BLOCK_NOT_AVAILABLE;
+  }
+  if( (blockNo + numBlock) > nfc->numBlocks ){
+    ESP_LOGE(TAG, "End of block exceeds length of data");
+    return ISO15693_EC_BLOCK_NOT_AVAILABLE;
+  }
+  
+  uint8_t readMultipleCmd[4] = {0x02, 0x23, blockNo, numBlock-1};
+
+  ESP_LOGI(TAG,"readMultipleBlock: Read Block #%d-%d, size=%d: ", blockNo, blockNo+numBlock-1, nfc->blockSize);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, readMultipleCmd, 4, ESP_LOG_INFO);
+
+  uint8_t *resultPtr;
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(readMultipleCmd, 4, &resultPtr);
+  if (ISO15693_EC_OK != rc) return rc;
+
+  uint8_t startAddr = blockNo * nfc->blockSize;
+  for (int i=0; i<numBlock * nfc->blockSize; i++) {
+    nfc->blockData[startAddr + i] = resultPtr[1+i];
+  }
+
+  ESP_LOGD(TAG,"readMultipleBlock: Value=");
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, nfc->blockData, numBlock * nfc->blockSize, ESP_LOG_DEBUG);
+
+  return ISO15693_EC_OK;
+}
+
+/*
  * Get System Information, code=2B
  *
  * Request format: SOF, Req.Flags, GetSysInfo, UID (opt.), CRC16, EOF
@@ -415,7 +471,6 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo)
  *    IC reference: The IC reference is on 8 bits and its meaning is defined by the IC manufacturer.
  */
 ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
-  //esp_log_level_set(TAG, ESP_LOG_DEBUG);
   uint8_t sysInfo[] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
   for (int i=0; i<8; i++) {
     sysInfo[2+i] = nfc->uid_raw[i];
@@ -455,7 +510,6 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
   }
 
   if (infoFlags & 0x04) { // VICC Memory size
-    if(nfc->blockData != NULL) free(nfc->blockData); // Free previously malloc'd blockData
     nfc->numBlocks = *p++;
     nfc->blockSize = *p++;
     nfc->blockSize &= 0x1f;
@@ -463,6 +517,8 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
     nfc->blockSize++;
 
     ESP_LOGD(TAG, "getSystemInfo: VICC MemSize=%d BlockSize=%d NumBlocks=%d", nfc->blockSize * nfc->numBlocks, nfc->blockSize, nfc->numBlocks);
+    // Reallocate blockData
+    free(nfc->blockData);
     nfc->blockData = (uint8_t*)malloc( (nfc->blockSize) * (nfc->numBlocks) );
     if(nfc->blockData == NULL) ESP_LOGE(TAG, "Failed to allocate heap for blockData");
   }
@@ -480,7 +536,6 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
     nfc->ic_ref = 0; 
     ESP_LOGD(TAG,"getSystemInfo: No IC ref");
   }
-  //esp_log_level_set(TAG, ESP_LOG_INFO);
 
   return ISO15693_EC_OK;
 }
@@ -566,10 +621,11 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password) {
   return rc; 
 }
 
-void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint8_t blockSize, uint8_t blockNum){
+void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint16_t blockSize, uint8_t blockNum){
   if(ESP_LOG_INFO <= esp_log_level_get(tag)){
-    uint8_t startAddr = blockSize * blockNum;
+    uint16_t startAddr = blockSize * blockNum;
     // Hex print
+    ESP_LOGD(TAG, "startAddr=%d", startAddr);
     printf("\033[32mI (%ld) %s: ", esp_log_timestamp(), tag);
     for (int i=0; i<blockSize; i++) {
       if(dataBuf[startAddr + i] < 16) printf("0");

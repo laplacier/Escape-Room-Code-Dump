@@ -98,10 +98,10 @@ void pn5180_init(void){
 
   // Configure software settings for pn5180
   spi_device_interface_config_t pn5180_devcfg={
-      .clock_speed_hz = 7000000,
+      .clock_speed_hz = 5000000,
       .mode = 0,
       .spics_io_num = PIN_NUM_NSS,
-      .queue_size = 4,
+      .queue_size = 208,
       .pre_cb = NULL,
   };
 
