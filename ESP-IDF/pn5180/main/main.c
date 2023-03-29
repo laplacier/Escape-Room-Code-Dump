@@ -52,19 +52,25 @@ void app_main(void)
   ISO15693NFC_t nfc;
   ISO15693Inventory_t inventory;
   inventory.numCard = 1;
+  uint32_t pollCount = 1;
   while(1){
     // Multiple inventory
+    ESP_LOGI(TAG, "Poll #%ld", pollCount);
     ISO15693ErrorCode_t rc = pn5180_getInventoryMultiple(&inventory);
     if (ISO15693_EC_OK != rc) {
       iso15693_printError(rc);
     }
+    else if(!inventory.numCard){
+      ESP_LOGI(TAG, "No cards detected.");
+    }
     else{
-      for(int i=0; i<16; i++){
+      ESP_LOGI(TAG, "Discovered %d cards.", inventory.numCard);
+      for(int i=0; i<inventory.numCard; i++){
         printUID(TAG, inventory.uid_raw[i], sizeof(inventory.uid_raw[i]));
         ESP_LOGI(TAG, "Manufacturer=%s", manufacturerCode[inventory.manufacturer[i]]);
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    pollCount++;
   }
   /*while(1){
     // Inventory from NFC tag

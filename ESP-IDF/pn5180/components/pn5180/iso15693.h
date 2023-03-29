@@ -53,6 +53,8 @@ typedef struct {
 
 typedef struct {
   uint8_t numCard;
+  uint8_t numCol;
+  uint16_t collision[16];
   uint8_t manufacturer[16];
   uint8_t type[16];
   uint8_t uid[16][6];
@@ -70,6 +72,7 @@ extern const char afi_string[14][30];
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr);
 ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc);
 ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t* nfc);
+ISO15693ErrorCode_t pn5180_inventoryPoll(ISO15693Inventory_t* nfc);
 ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
 ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
 ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo, uint8_t numBlock);
