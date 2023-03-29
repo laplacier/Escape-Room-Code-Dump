@@ -115,6 +115,7 @@ void pn5180_init(void);
  * @note   A constant low level of at least 10 μs at the RESET_N pin starts the internal reset procedure. When the PN5180 has finished the start_up, a IDLE_IRQ is raised and the IC is ready to receive commands on the host interface.
  */
 esp_err_t pn5180_reset(void);
+esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
 
 ////////////////////////////////////////////////
 // PN5180 direct commands with host interface //

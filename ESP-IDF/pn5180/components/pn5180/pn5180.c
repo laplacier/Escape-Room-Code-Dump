@@ -56,7 +56,7 @@ uint8_t readBuffer[508];
  *     - ESP_ERR_TIMEOUT  BUSY signal line failed to return low
  *
  */
-static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
+//esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
 static esp_err_t pn5180_txn(spi_device_handle_t dev, const void *tx, int txLen, void *rx, int rxLen);
 static esp_err_t pn5180_busy_wait(uint32_t timeout);
 
@@ -117,7 +117,7 @@ void pn5180_init(void){
   ESP_ERROR_CHECK(pn5180_setupRF());
 }
 
-static esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
+esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
   esp_err_t ret;
   ////////////////////
   // Initialization //

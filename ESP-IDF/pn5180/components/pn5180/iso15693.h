@@ -51,10 +51,25 @@ typedef struct {
   uint8_t* blockData;
 } ISO15693NFC_t;
 
+typedef struct {
+  uint8_t numCard;
+  uint8_t manufacturer[16];
+  uint8_t type[16];
+  uint8_t uid[16][6];
+  uint8_t uid_raw[16][8];
+  uint8_t dsfid[16];
+  uint8_t afi[16];
+  uint8_t ic_ref[16];
+  // The physical memory of an ISO15693 VICC is organized in the form of blocks or pages of fixed size. Up to 256 blocks can be addressed and a block size can be up to 32 bytes.
+  uint8_t numBlocks[16];
+  uint16_t blockSize[16];
+} ISO15693Inventory_t;
+
 extern const char afi_string[14][30];
 
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr);
 ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc);
+ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t* nfc);
 ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
 ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
 ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo, uint8_t numBlock);

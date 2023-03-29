@@ -62,7 +62,6 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
   uint8_t inventory[3] = { 0x26, 0x01, 0x00 };
   //                         |\- inventory flag + high data rate
   //                         \-- 1 slot: only one card, no AFI field present
-  bool flag_realloc = 0;
   ESP_LOGD(TAG,"getInventory: Get Inventory...");
   
   uint8_t *readBuffer;
@@ -107,6 +106,126 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
 
   ESP_LOGD(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X", readBuffer[0], readBuffer[1]);
 
+  return ISO15693_EC_OK;
+}
+
+/*
+ * Inventory, code=01
+ *
+ * Request format: SOF, Req.Flags, Inventory, AFI (opt.), Mask len, Mask value, CRC16, EOF
+ * Response format: SOF, Resp.Flags, DSFID, UID, CRC16, EOF
+ *
+ */
+ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t* nfc) {
+  //                                  Flags,  CMD, mskL
+  uint8_t inventory[5] = { 0x09, 0x00, 0x06, 0x01, 0x00 };
+  //                                     |\- inventory flag + high data rate
+  //                                     \-- 16 slots: upto 16 cards, no AFI field present
+  ESP_LOGD(TAG,"getInventory: Get Inventory...");
+  
+  uint8_t *readBuffer;
+  pn5180_setupRF(); // Load ISO15693 config, RF on
+  pn5180_clearIRQStatus(0x000FFFFF); // Clear all IRQ_STATUS flags
+  pn5180_writeRegisterWithAndMask(PN5180_SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
+  pn5180_writeRegisterWithOrMask(PN5180_SYSTEM_CONFIG, 0x00000003);   // Transceive Command
+  vTaskDelay(pdMS_TO_TICKS(10));
+
+  PN5180TransceiveState_t state = getTransceiveState();
+  ESP_LOGI(TAG, "getTransceiveState: state=%d", (uint8_t)(state));
+  if (PN5180_TS_WaitTransmit != state){
+    ESP_LOGE(TAG, "sendData: TransceiveState not WaitTransmit");
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  pn5180_command(inventory, 5, 0, 0); // Inventory command
+
+  for(int slot=0; slot<16; slot++){
+    vTaskDelay(pdMS_TO_TICKS(500));
+    uint32_t rxStatus;
+    uint32_t irqStatus = pn5180_getIRQStatus();
+    pn5180_readRegister(PN5180_RX_STATUS, &rxStatus);
+    uint16_t len = (uint16_t)(rxStatus & 0x000001ff);
+    if(!(irqStatus & PN5180_RX_IRQ_STAT) && !len){
+      printIRQStatus(TAG, irqStatus);
+      ESP_LOGE(TAG, "ISO15693Command: No EOF_RX IRQ and RX_STATUS: length = 0. State=%ld", irqStatus);
+      //return EC_NO_CARD;
+    }
+    else{
+      ESP_LOGI(TAG, "Response length=%d", len);
+      readBuffer = pn5180_readData(len);
+      if (0L == readBuffer) {
+        ESP_LOGE(TAG,"ISO5693Command: ERROR in readData!");
+        return ISO15693_EC_UNKNOWN_ERROR;
+      }
+
+      irqStatus = pn5180_getIRQStatus();
+      if (0 == (PN5180_RX_SOF_DET_IRQ_STAT & irqStatus)) { // no card detected
+        printIRQStatus(TAG, irqStatus);
+        pn5180_clearIRQStatus(PN5180_TX_IRQ_STAT | PN5180_IDLE_IRQ_STAT);
+        return EC_NO_CARD;
+      }
+
+      uint8_t responseFlags = readBuffer[0];
+      if (responseFlags & (1<<0)) { // error flag
+        uint8_t errorCode = readBuffer[1];
+        ESP_LOGE(TAG,"ISO5693Command: ERROR code=%X",errorCode);
+        iso15693_printError(errorCode);
+        if (errorCode >= 0xA0) { // custom command error codes
+          return ISO15693_EC_CUSTOM_CMD_ERROR;
+        }
+        else return (ISO15693ErrorCode_t)errorCode;
+      }
+
+      // Record raw UID data
+      for (int i=0; i<8; i++) {
+        nfc->uid_raw[slot][i] = readBuffer[2+i];
+      }
+
+      /*
+      * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
+      *  
+      * The 64-bit unique identifier (UID) is programmed during the production process according
+      * to ISO/IEC 15693-3 and cannot be changed afterwards.
+      * 
+      * UID: AA:BB:CCDDDDDDDDDD
+      * 
+      * AA - Always E0
+      * BB - Manufacturer Code (0x04 = NXP Semiconductors)
+      * CC - Random ID, sometimes used by manufacturer for Tag Type (0x01 = ICODE SLIX)
+      * DDDDDDDDDD - Random ID
+      */
+
+      // Record Manufacturer code
+      nfc->manufacturer[slot] = nfc->uid_raw[slot][6];
+
+      // Record IC type
+      nfc->type[slot] = nfc->uid_raw[slot][5];
+
+      // Record unique 6 byte UID in LSBFIRST order
+      for(int i=2; i<8; i++){
+        nfc->uid[slot][i-2] = nfc->uid_raw[slot][7-i];
+      }
+
+      ESP_LOGI(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X", readBuffer[0], readBuffer[1]);
+    }
+    
+    if(slot+1 < 16){ // If we have more cards to poll for...
+      pn5180_writeRegisterWithAndMask(PN5180_TX_CONFIG, 0xFFFFFB3F); // Next SEND_DATA will only include EOF
+      pn5180_writeRegisterWithAndMask(PN5180_SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
+      pn5180_writeRegisterWithOrMask(PN5180_SYSTEM_CONFIG, 0x00000003);   // Transceive 
+      vTaskDelay(pdMS_TO_TICKS(10));
+      PN5180TransceiveState_t state = getTransceiveState();
+      ESP_LOGI(TAG, "getTransceiveState: state=%d", (uint8_t)(state));
+      if (PN5180_TS_WaitTransmit != state){
+        ESP_LOGE(TAG, "sendData: TransceiveState not WaitTransmit");
+        return ESP_ERR_INVALID_STATE;
+      }
+      pn5180_clearIRQStatus(0x000FFFFF); // Clear all IRQ_STATUS flags
+      pn5180_command(inventory, 2, 0, 0); // Send EOF
+    }
+  }
+  
+  pn5180_setRF_off();
   return ISO15693_EC_OK;
 }
 
@@ -165,7 +284,6 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
  *   >0 = Error code
  */
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr) {
-  //pn5180_clearIRQStatus(PN5180_RX_SOF_DET_IRQ_STAT | PN5180_IDLE_IRQ_STAT | PN5180_TX_IRQ_STAT | PN5180_RX_IRQ_STAT);
   ESP_LOGD(TAG,"ISO5693Command: Issue Command 0x%X...", cmd[1]);
   pn5180_sendData(cmd, cmdLen, 0);
   vTaskDelay(pdMS_TO_TICKS(10));
@@ -180,11 +298,12 @@ ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_
   if (0 == (irqR & PN5180_RX_SOF_DET_IRQ_STAT)){
     printIRQStatus(TAG, irqR);
     ESP_LOGE(TAG, "ISO15693Command: No RX_SOF_DET IRQ. State=%ld", irqR);
-    return EC_NO_CARD;
+    //return EC_NO_CARD;
   }
   retries = 50;
   while (!(irqR & PN5180_RX_IRQ_STAT) && retries > 0) {   // wait for RX end of frame (max 500ms)
     vTaskDelay(pdMS_TO_TICKS(10));
+    irqR = pn5180_getIRQStatus();
 	  retries--;
   }
   uint32_t rxStatus;
@@ -360,8 +479,7 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo)
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, writeCmd, writeCmdSize, ESP_LOG_INFO);
 
   uint8_t *resultPtr;
-  //ISO15693ErrorCode_t rc = pn5180_ISO15693Command(writeCmd, writeCmdSize, &resultPtr);
-  ISO15693ErrorCode_t rc = ISO15693_EC_OK;
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(writeCmd, writeCmdSize, &resultPtr);
   free(writeCmd);
   return rc;
 }
@@ -404,13 +522,20 @@ ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo
     return ISO15693_EC_BLOCK_NOT_AVAILABLE;
   }
   
-  uint8_t readMultipleCmd[4] = {0x02, 0x23, blockNo, numBlock-1};
+  //uint8_t readMultipleCmd[4] = {0x02, 0x23, blockNo, numBlock-1};
+  //                              flags, cmd, uid,             blockNo
+  uint8_t readMultipleCmd[12] = { 0x22, 0x23, 1,2,3,4,5,6,7,8, blockNo, numBlock-1 }; // UID has LSB first!
+  //                                |\- high data rate
+  //                                \-- no options, addressed by UID
+  for (int i=0; i<8; i++) {
+    readMultipleCmd[2+i] = nfc->uid_raw[i];
+  }
 
-  ESP_LOGI(TAG,"readMultipleBlock: Read Block #%d-%d, size=%d: ", blockNo, blockNo+numBlock-1, nfc->blockSize);
-  ESP_LOG_BUFFER_HEX_LEVEL(TAG, readMultipleCmd, 4, ESP_LOG_INFO);
+  ESP_LOGD(TAG,"readMultipleBlock: Read Block #%d-%d, size=%d: ", blockNo, blockNo+numBlock-1, nfc->blockSize);
+  ESP_LOG_BUFFER_HEX_LEVEL(TAG, readMultipleCmd, 12, ESP_LOG_INFO);
 
   uint8_t *resultPtr;
-  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(readMultipleCmd, 4, &resultPtr);
+  ISO15693ErrorCode_t rc = pn5180_ISO15693Command(readMultipleCmd, 12, &resultPtr);
   if (ISO15693_EC_OK != rc) return rc;
 
   uint8_t startAddr = blockNo * nfc->blockSize;
