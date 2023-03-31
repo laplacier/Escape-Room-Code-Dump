@@ -45,32 +45,45 @@ void app_main(void)
   pn5180_readEEprom(PN5180_EEPROM_VERSION, eeprom, 2);
   ESP_LOGI(TAG,"EEPROM version: %d.%d",eeprom[1],eeprom[0]);
 
-  pn5180_setRF_off();
+  //pn5180_setRF_off();
   ESP_LOGI(TAG, "Starting read cycle...");
   vTaskDelay(pdMS_TO_TICKS(1000));
 
   ISO15693NFC_t nfc;
   ISO15693Inventory_t inventory;
-  inventory.numCard = 1;
+  ISO15693Inventory_t poll;
+  poll.numCard = 1;
+  inventory.numCard = 0;
   uint32_t pollCount = 1;
   while(1){
+
     // Multiple inventory
-    ESP_LOGI(TAG, "Poll #%ld", pollCount);
-    ISO15693ErrorCode_t rc = pn5180_getInventoryMultiple(&inventory);
+    ESP_LOGD(TAG, "Poll #%ld", pollCount);
+    ISO15693ErrorCode_t rc = pn5180_getInventoryMultiple(&poll);
     if (ISO15693_EC_OK != rc) {
       iso15693_printError(rc);
     }
-    else if(!inventory.numCard){
+    else if(!poll.numCard){
       ESP_LOGI(TAG, "No cards detected.");
     }
     else{
-      ESP_LOGI(TAG, "Discovered %d cards.", inventory.numCard);
-      for(int i=0; i<inventory.numCard; i++){
-        printUID(TAG, inventory.uid_raw[i], sizeof(inventory.uid_raw[i]));
-        ESP_LOGI(TAG, "Manufacturer=%s", manufacturerCode[inventory.manufacturer[i]]);
+      ESP_LOGD(TAG, "Polled %d cards.", poll.numCard);
+      for(int i=0; i<poll.numCard; i++){
+        bool flag_duplicate = 0;
+        for(int j=0; j<inventory.numCard; j++){
+          if(inventory.uid[j] == (uint64_t*)poll.uid[i]){
+            flag_duplicate = 1;
+            break;
+          }
+        }
+        if(!flag_duplicate){
+          *inventory.uid[inventory.numCard++] = (uint64_t*)poll.uid[i];
+          printUID(TAG, poll.uid[i], 8);
+        }
       }
     }
     pollCount++;
+    //vTaskDelay(pdMS_TO_TICKS(100));
   }
   /*while(1){
     // Inventory from NFC tag

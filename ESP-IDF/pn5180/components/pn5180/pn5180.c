@@ -98,7 +98,7 @@ void pn5180_init(void){
 
   // Configure software settings for pn5180
   spi_device_interface_config_t pn5180_devcfg={
-      .clock_speed_hz = 5000000,
+      .clock_speed_hz = 7000000,
       .mode = 0,
       .spics_io_num = PIN_NUM_NSS,
       .queue_size = 208,
@@ -172,11 +172,11 @@ esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *rec
  * over the SPI interface
  */
 static esp_err_t pn5180_busy_wait(uint32_t timeout){
-  uint32_t retries = timeout / 10;
-  while (gpio_get_level(PIN_NUM_BUSY) && retries > 0){
-    vTaskDelay(pdMS_TO_TICKS(10));
-    retries--;
+  while (gpio_get_level(PIN_NUM_BUSY) && timeout > 0){
+    vTaskDelay(pdMS_TO_TICKS(1));
+    timeout--;
   }
+  vTaskDelay(pdMS_TO_TICKS(1));
   if(gpio_get_level(PIN_NUM_BUSY)){
     ESP_LOGE(TAG, "busy_wait: Timeout waiting for BUSY pin LOW");
     return ESP_ERR_TIMEOUT;
@@ -349,7 +349,6 @@ esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits) {
 
   pn5180_writeRegisterWithAndMask(PN5180_SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
   pn5180_writeRegisterWithOrMask(PN5180_SYSTEM_CONFIG, 0x00000003);   // Transceive Command
-  vTaskDelay(pdMS_TO_TICKS(10));
 
   PN5180TransceiveState_t state = getTransceiveState();
   ESP_LOGD(TAG,"sendData: state=%d",(uint8_t)(state));

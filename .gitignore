@@ -1,5 +1,7 @@
+.gitignore
 ESP-IDF/*/build
 ESP-IDF/*/.vscode
 ESP-IDF/*/.devcontainer
 **.old
 **.[oa]
+.vscode
