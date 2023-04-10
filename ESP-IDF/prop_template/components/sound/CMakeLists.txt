@@ -8,6 +8,6 @@ endif()
 if(CONFIG_ENABLE_LCD_CONSOLE OR CONFIG_ENABLE_LCD_PLOT)
 endif()
 
-idf_component_register(SRCS "${srcs}"
+idf_component_register(SRCS "sound.c" "sound-dummy.c" "${srcs}"
                     INCLUDE_DIRS "."
                     REQUIRES driver)

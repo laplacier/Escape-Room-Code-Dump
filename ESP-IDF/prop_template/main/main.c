@@ -21,11 +21,12 @@
 #include "shift_reg.h"
 
 void app_main(void){
-    static const char* TAG = "Main";
-    GPIO_Init();
-    shift_init();
-    sound_init();
-    puzzle_init();
-    twai_can_init();
-    ESP_LOGI(TAG, "All setups complete. Destroying main...");
+  static const char* TAG = "Main";
+  GPIO_Init();
+  shift_init();
+  sound_init();
+  pn5180_init();
+  puzzle_init();
+  twai_can_init();
+  ESP_LOGI(TAG, "All setups complete. Destroying main...");
 }

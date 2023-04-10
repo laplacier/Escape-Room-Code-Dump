@@ -11,13 +11,13 @@ void sendAudioCommand(uint8_t command, uint16_t parameter){
 }
 
 void sound_task(void *arg){
-    while(1)
-        vTaskDelay(portMAX_DELAY / portTICK_PERIOD_MS); // Halt forever
+  while(1)
+    vTaskDelay(portMAX_DELAY / portTICK_PERIOD_MS); // Halt forever
 }
 
 void sound_init(void) 
 {
-    // Create minimum tasks/queues/semaphores to allow code cohesion 
-    xTaskCreatePinnedToCore(sound_task, "sound", 2048, NULL, 0, &sound_task_handle, tskNO_AFFINITY);
-    ESP_LOGI("Sound", "Disabled, no setup todo!");
+  // Create minimum tasks/queues/semaphores to allow code cohesion 
+  xTaskCreatePinnedToCore(sound_task, "sound", 2048, NULL, 0, &sound_task_handle, tskNO_AFFINITY);
+  ESP_LOGI("Sound", "Disabled, no setup todo!");
 }

@@ -51,81 +51,81 @@ QueueHandle_t gpio_task_queue;
 uint64_t mask_protect = 0b1111111111111111111111110110000011110001000100000000111111001011; // Default DNU pins implemented
 
 void GPIO_Init(void){
-    static const char* TAG = "GPIO";
-    if(CONFIG_ENABLE_SOUND){
-        ESP_LOGI(TAG, "Protecting sound pins");
-        mask_protect |= 1ULL << UART_TX_GPIO;
-        mask_protect |= 1ULL << UART_RX_GPIO;
-    }
-    if(CONFIG_ENABLE_CAN){
-        ESP_LOGI(TAG, "Protecting CAN pins");
-        mask_protect |= 1ULL << CAN_TX_GPIO;
-        mask_protect |= 1ULL << CAN_RX_GPIO;
-    }
-    if(CONFIG_ENABLE_SHIFT){
-        ESP_LOGI(TAG, "Protecting shift register pins");
-        mask_protect |= 1ULL << SHIFT_CLOCK_GPIO;
-        mask_protect |= 1ULL << PISO_LOAD_GPIO;
-        mask_protect |= 1ULL << PISO_DATA_GPIO;
-        mask_protect |= 1ULL << SIPO_LATCH_GPIO;
-        mask_protect |= 1ULL << SIPO_DATA_GPIO;
-    }
+  static const char* TAG = "GPIO";
+  if(CONFIG_ENABLE_SOUND){
+    ESP_LOGI(TAG, "Protecting sound pins");
+    mask_protect |= 1ULL << UART_TX_GPIO;
+    mask_protect |= 1ULL << UART_RX_GPIO;
+  }
+  if(CONFIG_ENABLE_CAN){
+    ESP_LOGI(TAG, "Protecting CAN pins");
+    mask_protect |= 1ULL << CAN_TX_GPIO;
+    mask_protect |= 1ULL << CAN_RX_GPIO;
+  }
+  if(CONFIG_ENABLE_SHIFT){
+    ESP_LOGI(TAG, "Protecting shift register pins");
+    mask_protect |= 1ULL << SHIFT_CLOCK_GPIO;
+    mask_protect |= 1ULL << PISO_LOAD_GPIO;
+    mask_protect |= 1ULL << PISO_DATA_GPIO;
+    mask_protect |= 1ULL << SIPO_LATCH_GPIO;
+    mask_protect |= 1ULL << SIPO_DATA_GPIO;
+  }
 
-    gpio_task_queue = xQueueCreate(10, sizeof(gpio_task_action_t));
-    gpio_task_sem = xSemaphoreCreateCounting( 10, 0 ); 
-    if(gpio_task_queue == NULL){
-        ESP_LOGI(TAG, "GPIO queue failed to create!");
-    }
-    xTaskCreatePinnedToCore(gpio_task, "GPIO", 2048, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
-    ESP_LOGI(TAG, "Setup complete");
+  gpio_task_queue = xQueueCreate(10, sizeof(gpio_task_action_t));
+  gpio_task_sem = xSemaphoreCreateCounting( 10, 0 ); 
+  if(gpio_task_queue == NULL){
+    ESP_LOGI(TAG, "GPIO queue failed to create!");
+  }
+  xTaskCreatePinnedToCore(gpio_task, "GPIO", 2048, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
+  ESP_LOGI(TAG, "Setup complete");
 }
 
 void gpio_task(void *arg){
-    gpio_task_action_t gpio_action;
-    static const char* TAG = "GPIO";
-    uint64_t gpio_states = 0;            // Initial state of pins
-    uint64_t gpio_mask = mask_protect; // Mask applied to select GPIO mins to modify
-    while(1){
-        if(xSemaphoreTake(gpio_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
-            xQueueReceive(gpio_task_queue, &gpio_action, portMAX_DELAY); // Pull task from queue
-            switch(gpio_action){
-                case SET_GPIO_MASK:
-                    gpio_mask = 0;
-                    for(int i=0; i<5; i++){
-                        BYTESHIFTL(gpio_mask,1); // Shift previous data over by a byte
-                        gpio_mask |= rx_payload[i+1]; // Copy byte of mask to now empty byte in var
-                    }
-                    gpio_mask &= ~(mask_protect); // Remove pins used by other components from mask
-                    ESP_LOGI(TAG, "Set mask");
-                    break;
-                case SET_GPIO_STATES:
-                    gpio_states = 0;
-                    for(int i=0; i<5; i++){
-                        BYTESHIFTL(gpio_states,1);      // Shift previous data over by a byte
-                        gpio_states |= rx_payload[i+1]; // Copy byte of pins to modify to now empty byte in var
-                    }
-                    for(int i=0; i<34; i++){ // GPIO 34+ cannot be output, ignore
-                        if(gpio_mask & BIT(i)){ // If this pin is being set...
-                            gpio_set_level(i, ((gpio_states >> i) & 1U)); // Set the state of the pin
-                        }
-                    }
-                    ESP_LOGI(TAG, "Set output states");
-                    break;
-                case SEND_GPIO_STATES:                                      // Command: Send states to CAN_TX payload
-                    gpio_states = 0;
-                    for(int i=0; i<39; i++){ // Snapshot state of all GPIO pins
-                        bitWrite(gpio_states,i,gpio_get_level(i));
-                    }
-                    xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
-                    tx_payload[1] = 1;
-                    for(int i=0; i<5; i++){
-                        tx_payload[i+2] = READBYTE(gpio_states,i); // Transfer the current state byte to the CAN_TX payload
-                    }
-                    break;
+  gpio_task_action_t gpio_action;
+  static const char* TAG = "GPIO";
+  uint64_t gpio_states = 0;            // Initial state of pins
+  uint64_t gpio_mask = mask_protect; // Mask applied to select GPIO mins to modify
+  while(1){
+    if(xSemaphoreTake(gpio_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
+      xQueueReceive(gpio_task_queue, &gpio_action, portMAX_DELAY); // Pull task from queue
+      switch(gpio_action){
+        case SET_GPIO_MASK:
+          gpio_mask = 0;
+          for(int i=0; i<5; i++){
+            BYTESHIFTL(gpio_mask,1); // Shift previous data over by a byte
+            gpio_mask |= rx_payload[i+1]; // Copy byte of mask to now empty byte in var
+          }
+          gpio_mask &= ~(mask_protect); // Remove pins used by other components from mask
+          ESP_LOGI(TAG, "Set mask");
+          break;
+        case SET_GPIO_STATES:
+          gpio_states = 0;
+          for(int i=0; i<5; i++){
+            BYTESHIFTL(gpio_states,1);      // Shift previous data over by a byte
+            gpio_states |= rx_payload[i+1]; // Copy byte of pins to modify to now empty byte in var
+          }
+          for(int i=0; i<34; i++){ // GPIO 34+ cannot be output, ignore
+            if(gpio_mask & BIT(i)){ // If this pin is being set...
+              gpio_set_level(i, ((gpio_states >> i) & 1U)); // Set the state of the pin
             }
-            xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
-        }
+          }
+          ESP_LOGI(TAG, "Set output states");
+          break;
+        case SEND_GPIO_STATES:                                      // Command: Send states to CAN_TX payload
+          gpio_states = 0;
+          for(int i=0; i<39; i++){ // Snapshot state of all GPIO pins
+            bitWrite(gpio_states,i,gpio_get_level(i));
+          }
+          xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
+          tx_payload[1] = 1;
+          for(int i=0; i<5; i++){
+            tx_payload[i+2] = READBYTE(gpio_states,i); // Transfer the current state byte to the CAN_TX payload
+          }
+          break;
+      }
+      xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
     }
+  }
 }
 
 /*
@@ -134,50 +134,50 @@ void gpio_task(void *arg){
 void gpio_mode(uint8_t pin, gpio_mode_wrapper_t mode, gpio_interrupt_t type){
     gpio_config_t io_conf = {};
     switch(mode){
-        case OUTPUT:
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_INPUT_OUTPUT; // We want to simplify sending pin states, so in/out required
-            io_conf.pull_down_en = 0;
-            io_conf.pull_up_en = 0;
-            break;
-        case INPUT:
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_INPUT;
-            io_conf.pull_down_en = 0;
-            io_conf.pull_up_en = 0;
-            break;
-        case INPUT_PULLUP:
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_INPUT;
-            io_conf.pull_down_en = 0;
-            io_conf.pull_up_en = 1;
-            break;
-        case INPUT_PULLDOWN:
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_INPUT;
-            io_conf.pull_down_en = 1;
-            io_conf.pull_up_en = 0;
-            break;
-        case INPUT_INTERRUPT:
-            if(type == RISING){
-                io_conf.intr_type = GPIO_INTR_POSEDGE;
-            }
-            else if(type == FALLING){
-                io_conf.intr_type = GPIO_INTR_NEGEDGE;
-            }
-            else{
-                io_conf.intr_type = GPIO_INTR_ANYEDGE;
-            }
-            io_conf.mode = GPIO_MODE_INPUT;
-            io_conf.pull_down_en = 0;
-            io_conf.pull_up_en = 0;
-            break;
-        default:
-            io_conf.intr_type = GPIO_INTR_DISABLE;
-            io_conf.mode = GPIO_MODE_INPUT;
-            io_conf.pull_down_en = 0;
-            io_conf.pull_up_en = 0;
-            break;
+      case OUTPUT:
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_INPUT_OUTPUT; // We want to simplify sending pin states, so in/out required
+        io_conf.pull_down_en = 0;
+        io_conf.pull_up_en = 0;
+        break;
+      case INPUT:
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_down_en = 0;
+        io_conf.pull_up_en = 0;
+        break;
+      case INPUT_PULLUP:
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_down_en = 0;
+        io_conf.pull_up_en = 1;
+        break;
+      case INPUT_PULLDOWN:
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_down_en = 1;
+        io_conf.pull_up_en = 0;
+        break;
+      case INPUT_INTERRUPT:
+        if(type == RISING){
+          io_conf.intr_type = GPIO_INTR_POSEDGE;
+        }
+        else if(type == FALLING){
+          io_conf.intr_type = GPIO_INTR_NEGEDGE;
+        }
+        else{
+          io_conf.intr_type = GPIO_INTR_ANYEDGE;
+        }
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_down_en = 0;
+        io_conf.pull_up_en = 0;
+        break;
+      default:
+        io_conf.intr_type = GPIO_INTR_DISABLE;
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_down_en = 0;
+        io_conf.pull_up_en = 0;
+        break;
     }
     io_conf.pin_bit_mask = (1ULL << pin);    // Select the pin in mask
     io_conf.pin_bit_mask &= ~(mask_protect); // Ensure it is not a pin from another component
@@ -185,9 +185,9 @@ void gpio_mode(uint8_t pin, gpio_mode_wrapper_t mode, gpio_interrupt_t type){
 }
 
 bool gpio_read(uint8_t pin){
-    return (gpio_get_level(pin));
+  return (gpio_get_level(pin));
 }
 
 esp_err_t gpio_write(uint8_t pin, bool level){
-    return (gpio_set_level(pin, level));
+  return (gpio_set_level(pin, level));
 }
