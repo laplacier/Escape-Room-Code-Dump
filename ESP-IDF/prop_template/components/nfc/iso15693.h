@@ -48,7 +48,7 @@ typedef struct {
   // The physical memory of an ISO15693 VICC is organized in the form of blocks or pages of fixed size. Up to 256 blocks can be addressed and a block size can be up to 32 bytes.
   uint8_t numBlocks;
   uint16_t blockSize;
-  uint8_t* blockData;
+  uint8_t *blockData;
 } ISO15693NFC_t;
 
 typedef struct {
@@ -76,5 +76,5 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password);
 ISO15693ErrorCode_t pn5180_disablePrivacyMode(uint8_t *password); 
 esp_err_t pn5180_setupRF(void);
 void iso15693_printError(ISO15693ErrorCode_t errno);
-void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint16_t blockSize, uint8_t blockNum);
+void iso15693_printGeneric(const char *tag, uint8_t *dataBuf, uint16_t blockSize, uint8_t blockNum);
 #endif /* PN5180ISO15693_H */

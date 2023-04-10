@@ -19,6 +19,8 @@
 #ifndef pn5180_h
 #define pn5180_h
 
+#define GENERIC_TASK_PRIO 1
+
 // PN5180 Commands
 #define PN5180_WRITE_REGISTER                     (0x00)
 #define PN5180_WRITE_REGISTER_OR_MASK             (0x01)
@@ -102,6 +104,8 @@ typedef enum {
 } nfc_task_action_t;
 
 extern const char manufacturerCode[110][100];
+
+static void nfc_task(void *arg);
 
 /**
  * @brief  Initialize PN5180 device

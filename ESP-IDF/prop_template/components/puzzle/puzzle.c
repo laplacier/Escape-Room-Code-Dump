@@ -13,6 +13,8 @@
 #include "sound.h"
 #include "shift_reg.h"
 #include "gpio_prop.h"
+#include "iso15693.h"
+#include "pn5180.h"
 
 //-----------------Prototypes------------------//
 static void puzzle_task(void *arg);
@@ -37,6 +39,8 @@ extern SemaphoreHandle_t gpio_task_sem;
 
 //shift_reg
 extern uint8_t dataIn[NUM_PISO]; // Data read from PISO registers
+extern QueueHandle_t shift_task_queue;
+extern SemaphoreHandle_t shift_task_sem;
 
 //nfc
 extern ISO15693NFC_t nfc; // Struct holding data from nfc tags
@@ -98,6 +102,7 @@ static bool CAN_Receive(uint32_t delay){
   static const char* cmd[4]= {"STATE","GPIO_MASK","GPIO","PLAY_SOUND"};
   puzzle_task_action_t puzzle_action;
   gpio_task_action_t gpio_action;
+  shift_task_action_t shift_action;
   if(xSemaphoreTake(puzzle_task_sem, pdMS_TO_TICKS(delay)) == pdTRUE){ // Blocked from executing until ctrl_task gives semaphore
     xQueueReceive(puzzle_task_queue, &puzzle_action, pdMS_TO_TICKS(delay)); // Pull task from queue
     if(puzzle_action == CMD){ // Received a forced state change from the CAN bus
@@ -128,6 +133,18 @@ static bool CAN_Receive(uint32_t delay){
         case 3: // Play music
           xTaskNotify(sound_task_handle,rx_payload[1],eSetValueWithOverwrite);
           xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+          break;
+        case 4: // Mask of shift register pins to modify
+          shift_action = RECEIVE_SIPO_MASK;
+          xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
+          xSemaphoreGive(shift_task_sem);
+          ESP_LOGI(TAG, "Sent mask to Shift Register");
+          break;
+        case 5: // States of shift register pins to modify
+          shift_action = RECEIVE_SIPO_STATES;
+          xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
+          xSemaphoreGive(shift_task_sem);
+          ESP_LOGI(TAG, "Sent states to Shift Register");
           break;
         default:
           ESP_LOGI(TAG, "Unknown command");

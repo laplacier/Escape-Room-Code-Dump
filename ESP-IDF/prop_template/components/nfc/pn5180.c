@@ -23,6 +23,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "iso15693.h"
@@ -38,10 +39,16 @@
 spi_device_handle_t pn5180;
 SemaphoreHandle_t nfc_task_sem;
 QueueHandle_t nfc_task_queue;
+static const char *TAG = "pn5180.c";
 
 ISO15693NFC_t nfc;
-static const char *TAG = "pn5180.c";
-uint8_t readBuffer[508];
+uint8_t *writeBuffer = NULL;
+
+//twai_can
+extern SemaphoreHandle_t tx_payload_sem;
+extern SemaphoreHandle_t rx_payload_sem;
+extern uint8_t rx_payload[8];
+extern uint8_t tx_payload[8];
 
 ////////////////////////
 // Private Prototypes //
@@ -127,50 +134,73 @@ void pn5180_init(void){
 
 static void nfc_task(void *arg){
   nfc_task_action_t nfc_action;
-  static const char* TAG = "NFC";
+  const char* TAG = "NFC";
+  uint8_t writeBufferPos = 0;
+  bool flag_nfcWrite = false;
+
   while(1){
+    uint16_t memSize = nfc.numBlocks * nfc.blockSize;
     if(xSemaphoreTake(nfc_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
       xQueueReceive(nfc_task_queue, &nfc_action, portMAX_DELAY); // Pull task from queue
       switch(nfc_action){
         case WRITE_DATA:
+          uint8_t rxLength = 6;
+          if(rx_payload[0] == 0x06){
+            if(writeBuffer != NULL){
+              free(writeBuffer);
+              writeBuffer = NULL;
+            }
+            writeBuffer = (uint8_t*)malloc(memSize * sizeof(uint8_t));
+            writeBufferPos = 0;
+          }
+          if((rx_payload[0] == 0x08) && !(memSize % 6)){
+            rxLength = memSize % 6;
+          }
+          for(int i=0; i<rxLength; i++){
+            writeBuffer[writeBufferPos++] = rx_payload[i+1];
+          }
+          if(rx_payload[0] == 0x08){
+            flag_nfcWrite = 1;
+          }
+          xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
           break;
         case SEND_DATA:                                      // Command: Send states to CAN_TX payload
-          xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
-          tx_payload[1] = 5;
-          for(int i=0; i<NUM_SIPO; i++){
-            tx_payload[i+2] = dataOut[i]; // Transfer the current state bytes to the CAN_TX payload
+          uint16_t numTxn = memSize / 6;
+          for(int i=0; i<numTxn; i++){
+            xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
+            if(i == 0){
+              tx_payload[1] = 6; // Start of send
+            }
+            else if(i == numTxn - 1){
+              tx_payload[1] = 8; // End of send
+            }
+            else{
+              tx_payload[1] = 7; // Middle of send
+            }
+            for(int j=0; j<6; j++){
+              tx_payload[j+2] = nfc.blockData[(i*6) + j]; // Transfer the NFC bytes to the CAN_TX payload
+            }
           }
           break;
       }
     }
-    // Inventory from NFC tag
-    ISO15693ErrorCode_t rc = pn5180_getInventory(&nfc);
-    if (ISO15693_EC_OK != rc) {
-      iso15693_printError(rc);
-    }
-    else{
-      printUID(TAG, nfc.uid_raw, sizeof(nfc.uid_raw));
-      ESP_LOGD(TAG, "Manufacturer=%s", manufacturerCode[nfc.manufacturer]);
-    }
-    // System information from NFC tag
-    rc = pn5180_getSystemInfo(&nfc);
-    if (ISO15693_EC_OK != rc) {
-      iso15693_printError(rc);
-    }
-    else{
-      ESP_LOGD(TAG, "System info retrieved: DSFID=%d, AFI=%s, blockSize=%d, numBlocks=%d, IC Ref=%d", nfc.dsfid, afi_string[nfc.afi], nfc.blockSize, nfc.numBlocks, nfc.ic_ref);
-    }
-    // Read all blocks
-    ESP_LOGD(TAG, "Reading multiple blocks #0-%d", nfc.numBlocks-1);
-    rc = pn5180_readMultipleBlock(&nfc, 0, nfc.numBlocks);
-    if (ISO15693_EC_OK != rc) {
-      ESP_LOGE(TAG, "Error in readMultipleBlock #0-%d:", nfc.numBlocks-1);
-      iso15693_printError(rc);
-    }
-    else{
-      //for(int i=0; i<nfc.numBlocks; i++){
-      //  iso15693_printGeneric(TAG, nfc.blockData, nfc.blockSize, i);
-      //}
+    ISO15693ErrorCode_t rc = pn5180_getInventory(&nfc); // Inventory from NFC tag
+    if (ISO15693_EC_OK == rc) {
+      rc = pn5180_getSystemInfo(&nfc); // System information from NFC tag
+      if (ISO15693_EC_OK == rc) {
+        if(flag_nfcWrite){ // If we need to write data received from CAN to NFC tag
+          for(int i=0; i<memSize; i++){
+            nfc.blockData[i] = writeBuffer[i]; // Copy data to NFC struct
+          }
+          for(int i=0; i<nfc.numBlocks; i++){
+            pn5180_writeSingleBlock(&nfc, i); // Write data to NFC tag
+          }
+          flag_nfcWrite = 0;
+        }
+        else{
+          pn5180_readMultipleBlock(&nfc, 0, nfc.numBlocks); // Read all blocks
+        }
+      }
     }
   }
 }
@@ -193,7 +223,7 @@ esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *rec
   //////////////////
   ESP_LOGD(TAG, "command: Write data:");
   ESP_LOG_BUFFER_HEX_LEVEL(TAG, sendBuffer, sendBufferLen, ESP_LOG_DEBUG);
-  ret = pn5180_txn(nfc, sendBuffer, sendBufferLen, NULL, 0); // 2. 3. 4.
+  ret = pn5180_txn(pn5180, sendBuffer, sendBufferLen, NULL, 0); // 2. 3. 4.
   if(ret != ESP_OK){
     ESP_LOGE(TAG, "pn5180_command: SPI transaction write failed");
     return ret;
@@ -213,7 +243,7 @@ esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *rec
   //////////////////////
   // Receive Response //
   //////////////////////
-  ret = pn5180_txn(nfc, recvBuffer, recvBufferLen, recvBuffer, recvBufferLen); // 6. 7. 8.
+  ret = pn5180_txn(pn5180, recvBuffer, recvBufferLen, recvBuffer, recvBufferLen); // 6. 7. 8.
   if(ret != ESP_OK){
     ESP_LOGE(TAG, "pn5180_command: SPI transaction read failed");
     return ret;
@@ -421,9 +451,9 @@ esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits) {
 /*
  * READ_DATA - 0x0A
  */
-uint8_t* pn5180_readData(int len) {
+uint8_t *pn5180_readData(int len) {
   if (len > 508) return 0L;
-
+  uint8_t readBuffer[508];
   uint8_t cmd[2] = { PN5180_READ_DATA, 0x00 };
   pn5180_command(cmd, 2, readBuffer, len);
 
@@ -458,27 +488,6 @@ PN5180TransceiveState_t getTransceiveState() {
   uint8_t state = ((rfStatus >> 24) & 0x07);
   return state;
 }
-
-#ifdef FALSE
-/*
- * READ_DATA - 0x0A
- * This command reads data from the RF reception buffer, after a successful reception.
- * The RX_STATUS register contains the information to verify if the reception had been
- * successful. The data is available within the response of the command. The host controls
- * the number of bytes to be read via the SPI interface.
- * The RF data had been successfully received. In case the instruction is executed without
- * preceding an RF data reception, no exception is raised but the data read back from the
- * reception buffer is invalid. If the condition is not fulfilled, an exception is raised.
- */
-
-esp_err_t pn5180_readData(uint8_t len, uint8_t *buffer) {
-	if (len > 508) {
-		return ESP_ERR_INVALID_SIZE;
-	}
-	uint8_t cmd[2] = { PN5180_READ_DATA, 0x00 };
-	return pn5180_command(cmd, 2, buffer, len);;
-}
-#endif
 
 /* prepare LPCD registers */
 esp_err_t pn5180_prepareLPCD() {

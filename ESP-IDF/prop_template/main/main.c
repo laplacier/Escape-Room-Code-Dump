@@ -19,6 +19,7 @@
 #include "sound.h"
 #include "gpio_prop.h"
 #include "shift_reg.h"
+#include "pn5180.h"
 
 void app_main(void){
   static const char* TAG = "Main";
