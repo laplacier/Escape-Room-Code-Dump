@@ -60,13 +60,13 @@ typedef struct {
 extern const char afi_string[14][30];
 
 ISO15693ErrorCode_t pn5180_ISO15693Command(uint8_t *cmd, uint16_t cmdLen, uint8_t **resultPtr);
-ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc);
-ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t* nfc);
-ISO15693ErrorCode_t pn5180_inventoryPoll(ISO15693Inventory_t* nfc, uint32_t* collision, uint8_t* numCol);
-ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
-ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo);
-ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo, uint8_t numBlock);
-ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc);
+ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t *nfc);
+ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t *nfc);
+ISO15693ErrorCode_t pn5180_inventoryPoll(ISO15693Inventory_t *nfc, uint32_t *collision, uint8_t *numCol);
+ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t *nfc, uint8_t blockNo);
+ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t *nfc, uint8_t blockNo);
+ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t *nfc, uint8_t blockNo, uint8_t numBlock);
+ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t *nfc);
 // ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
 ISO15693ErrorCode_t pn5180_getRandomNumber(uint8_t *randomData);
 ISO15693ErrorCode_t pn5180_setPassword(uint8_t identifier, uint8_t *password, uint8_t *random);

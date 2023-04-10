@@ -57,7 +57,7 @@ esp_err_t pn5180_setupRF(void) {
  * Response format: SOF, Resp.Flags, DSFID, UID, CRC16, EOF
  *
  */
-ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
+ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t *nfc) {
   //                      Flags,  CMD, maskLen
   uint8_t inventory[3] = { 0x26, 0x01, 0x00 };
   //                         |\- inventory flag + high data rate
@@ -116,7 +116,7 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t* nfc) {
  * Response format: SOF, Resp.Flags, DSFID, UID, CRC16, EOF
  *
  */
-ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t* nfc) {
+ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t *nfc) {
   ESP_LOGD(TAG,"getInventory: Get Inventory...");
   nfc->numCard = 0;
   uint8_t numCol = 0;
@@ -135,7 +135,7 @@ ISO15693ErrorCode_t pn5180_getInventoryMultiple(ISO15693Inventory_t* nfc) {
   return ISO15693_EC_OK;
 }
 
-ISO15693ErrorCode_t pn5180_inventoryPoll(ISO15693Inventory_t* nfc, uint32_t* collision, uint8_t* numCol){
+ISO15693ErrorCode_t pn5180_inventoryPoll(ISO15693Inventory_t *nfc, uint32_t *collision, uint8_t *numCol){
   uint8_t maskLen = 0;
   if(*numCol > 0){
     uint32_t mask = collision[0];
@@ -367,7 +367,7 @@ void iso15693_printError(ISO15693ErrorCode_t errno) {
  *  when ERROR flag is NOT set:
  *    SOF, Flags, BlockData (len=blockLength), CRC16, EOF
  */
-ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) {
+ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t *nfc, uint8_t blockNo) {
   //                              flags, cmd, uid,             blockNo
   uint8_t readSingleBlock[11] = { 0x22, 0x20, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
   //                                |\- high data rate
@@ -422,7 +422,7 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) 
  *  when ERROR flag is NOT set:
  *    SOF, Resp.Flags, CRC16, EOF
  */
-ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo) {
+ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t *nfc, uint8_t blockNo) {
   //                            flags, cmd, uid,             blockNo
   uint8_t writeSingleBlock[] = { 0x22, 0x21, 1,2,3,4,5,6,7,8, blockNo }; // UID has LSB first!
   //                               |\- high data rate
@@ -481,7 +481,7 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t* nfc, uint8_t blockNo)
  *  when ERROR flag is NOT set:
  *    SOF, Flags, BlockData (len=nfc->blockSize * numBlock), CRC16, EOF
  */
-ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo, uint8_t numBlock) {
+ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t *nfc, uint8_t blockNo, uint8_t numBlock) {
   if(blockNo > nfc->numBlocks-1){
     ESP_LOGE(TAG, "Starting block exceeds length of data");
     return ISO15693_EC_BLOCK_NOT_AVAILABLE;
@@ -564,7 +564,7 @@ ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t* nfc, uint8_t blockNo
  *
  *    IC reference: The IC reference is on 8 bits and its meaning is defined by the IC manufacturer.
  */
-ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t* nfc) {
+ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t *nfc) {
   uint8_t sysInfo[] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
   for (int i=0; i<8; i++) {
     sysInfo[2+i] = nfc->uid_raw[i];
@@ -715,7 +715,7 @@ ISO15693ErrorCode_t pn5180_enablePrivacyMode(uint8_t *password) {
   return rc; 
 }
 
-void iso15693_printGeneric(const char* tag, uint8_t* dataBuf, uint16_t blockSize, uint8_t blockNum){
+void iso15693_printGeneric(const char *tag, uint8_t *dataBuf, uint16_t blockSize, uint8_t blockNum){
   if(ESP_LOG_INFO <= esp_log_level_get(tag)){
     uint16_t startAddr = blockSize * blockNum;
     // Hex print

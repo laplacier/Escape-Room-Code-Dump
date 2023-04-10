@@ -50,44 +50,10 @@ void app_main(void)
   vTaskDelay(pdMS_TO_TICKS(1000));
 
   ISO15693NFC_t nfc;
-  ISO15693Inventory_t inventory;
-  ISO15693Inventory_t poll;
-  poll.numCard = 1;
-  inventory.numCard = 0;
-  uint32_t pollCount = 1;
-  while(1){
 
-    // Multiple inventory
-    ESP_LOGD(TAG, "Poll #%ld", pollCount);
-    ISO15693ErrorCode_t rc = pn5180_getInventoryMultiple(&poll);
-    if (ISO15693_EC_OK != rc) {
-      iso15693_printError(rc);
-    }
-    else if(!poll.numCard){
-      ESP_LOGI(TAG, "No cards detected.");
-    }
-    else{
-      ESP_LOGD(TAG, "Polled %d cards.", poll.numCard);
-      for(int i=0; i<poll.numCard; i++){
-        bool flag_duplicate = 0;
-        for(int j=0; j<inventory.numCard; j++){
-          if(inventory.uid[j] == (uint64_t*)poll.uid[i]){
-            flag_duplicate = 1;
-            break;
-          }
-        }
-        if(!flag_duplicate){
-          *inventory.uid[inventory.numCard++] = (uint64_t*)poll.uid[i];
-          printUID(TAG, poll.uid[i], 8);
-        }
-      }
-    }
-    pollCount++;
-    //vTaskDelay(pdMS_TO_TICKS(100));
-  }
-  /*while(1){
+  while(1){
     // Inventory from NFC tag
-    ISO15693ErrorCode_t rc = pn5180_getInventoryMultiple(&nfc);
+    ISO15693ErrorCode_t rc = pn5180_getInventory(&nfc);
     if (ISO15693_EC_OK != rc) {
       iso15693_printError(rc);
     }
@@ -107,19 +73,7 @@ void app_main(void)
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // Read blocks one at a time
-    for (int i=0; i<nfc.numBlocks; i++) {
-      rc = pn5180_readSingleBlock(&nfc, i);
-      if (ISO15693_EC_OK != rc) {
-        ESP_LOGE(TAG, "Error in readSingleBlock #%d:", i);
-        iso15693_printError(rc);
-        break;
-      }
-      else{
-        ESP_LOGI(TAG, "Reading block#%d", i);
-        iso15693_printGeneric(TAG, nfc.blockData, nfc.blockSize, i);
-      }
-    }
+    // Read all blocks
     ESP_LOGI(TAG, "Reading multiple blocks #0-%d", nfc.numBlocks-1);
     rc = pn5180_readMultipleBlock(&nfc, 0, nfc.numBlocks);
     if (ISO15693_EC_OK != rc) {
@@ -154,7 +108,7 @@ void app_main(void)
     }
 #endif // WRITE_ENABLED
     vTaskDelay(pdMS_TO_TICKS(5000));
-  }*/
+  }
 }
 
 void printUID(const char* tag, uint8_t* uid, uint8_t len){
