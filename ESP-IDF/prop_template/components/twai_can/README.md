@@ -6,7 +6,7 @@ Utilizes the built in twai_can functions of the ESP32 CAN controller to deliver 
 
 ## CAN Messages
 
-Messages sent on the CAN network follow the ISO11898-1 standard implementation. Table 1 shows the data of significance contained in each standard CAN frame when analyzing traffic on the CAN network
+Messages sent on the CAN network follow the ISO11898-1 standard implementation. **Table 1** shows the data of significance contained in each standard CAN frame when analyzing traffic on the CAN network
 
 **Table 1. CAN Message Fields**
 | Field Start | Field End | Value | Description      |
@@ -52,19 +52,17 @@ The ID of the prop the message is intended for. All props will see the message r
 The instruction to be carried out by the target prop. **Table 3** describes the commands that can be issued:
 
 **Table 3. Issuable Commands**
-| Value | Component | Description |
-| ----: |    ---    |     ---     |
-| 0 | [puzzle](../puzzle) | [SET Game State](../puzzle/README.md#set-game-state) |
-| 1 | [GPIO](../gpio_prop) | [SET GPIO Mask](../gpio_prop/README.md#set-gpio-mask) |
-| 2 | [GPIO](../gpio_prop) | [SET GPIO State](../gpio_prop/README.md#set-gpio-state) |
-| 3 | [music](../music) | [SET Music](../music/README.md#set-music) |
-| 4 | [shift_reg](../shift_reg) | [SET Shift Register Mask](../shift_reg/README.md#set-shift-register-mask) |
-| 5 | [shift_reg](../shift_reg) | [SET Shift Register State](../shift_reg/README.md#set-shift-register-state) |
-| 6 | [nfc](../nfc) | [WRITE NFC Tag (SOF)](../nfc/README.md#write-nfc-tag) |
-| 7 | [nfc](../nfc) | [WRITE NFC Tag (cont...)](../nfc/README.md#write-nfc-tag) |
-| 8 | [nfc](../nfc) | [WRITE NFC Tag (EOF)](../nfc/README.md#write-nfc-tag) |
-| 254 | main | Ping Response |
-| 255 | main | Ping Request |
+| Value |         Component         |                          Description                           |
+| ----: |---------------------------|----------------------------------------------------------------|
+| 0     | [puzzle](../puzzle)       | [GAME_STATE](../puzzle/README.md#set-game-state)               |
+| 1     | [GPIO](../gpio_prop)      | [GPIO_MASK](../gpio_prop/README.md#set-gpio-mask)              |
+| 2     | [GPIO](../gpio_prop)      | [GPIO_STATE](../gpio_prop/README.md#set-gpio-state)            |
+| 3     | [music](../music)         | [MUSIC](../music/README.md#set-music)                          |
+| 4     | [shift_reg](../shift_reg) | [SHIFT_MASK](../shift_reg/README.md#set-shift-register-mask)   |
+| 5     | [shift_reg](../shift_reg) | [SHIFT_STATE](../shift_reg/README.md#set-shift-register-state) |
+| 6     | [nfc](../nfc)             | [NFC_SOF](../nfc/README.md#write-nfc-tag)                      |
+| 7     | [nfc](../nfc)             | [NFC_DATA](../nfc/README.md#write-nfc-tag)                     |
+| 8     | [nfc](../nfc)             | [NFC_EOF](../nfc/README.md#write-nfc-tag)                      |
 
 ### Command Payload
 Additional instructions as required by the prop to accompany the command. Click on a command in **Table 3** to navigate to the payload description and options for each command.
@@ -73,14 +71,14 @@ Additional instructions as required by the prop to accompany the command. Click 
 This component can be configured by opening the ESP-IDF Configuration editor and navigating to "Prop CAN Options".
 
 **Table 4. Configuration Options**
-| Setting            | Type | Default                |
-|--------------------|------|------------------------|
-| [Enable CAN](#enable-can) | bool | True |
-| [CAN_TX Pin](#can_tx-pin) | int  | 33 |
-| [CAN_RX Pin](#can_rx-pin) | int  | 32 |
-| [Prop ID](#prop-id) | int  | 1                      |
-| [Operation Mode](#operation-mode) | enum | "Receive and Transmit" |
-| [Enable Inheritance](#enable-inheritance) | bool | false |
+|                  Setting                  | Type | Default                |
+|-------------------------------------------|------|------------------------|
+| [Enable CAN](#enable-can)                 | bool | True                   |
+| [CAN_TX Pin](#can_tx-pin)                 | int  | 33                     |
+| [CAN_RX Pin](#can_rx-pin)                 | int  | 32                     |
+| [Prop ID](#prop-id)                       | int  | 1                      |
+| [Operation Mode](#operation-mode)         | enum | "Receive and Transmit" |
+| [Enable Inheritance](#enable-inheritance) | bool | false                  |
 
 ### Enable CAN
 Allow the prop to use CAN, which is the primary method for communicating between props. If CAN is disabled, the prop's default game stage will be 1 (Active) instead of 0 (Idle/Disabled) to prevent the prop from being unable to activate. You will need to be sure to develop your own method to reset the puzzle upon completion if CAN is disabled.
@@ -100,78 +98,63 @@ Receive and Transmit - Normal operation. Can send and receive messages on the CA
 Listen only - Can receive messages on the CAN bus and ACK them, but will not send messages or respond to message requests.
 
 ### Prop inheritance (unimplemented)
-Allows the prop to participate in prop inheritance. When a device is sent a ping request multiple times without a ping reponse, any prop with this setting enabled will attempt to request to inherit the missing prop. If
-the request is successful, the prop will "inherit" the send/receive responsibilities of the missing prop and
-mimic their ID. This is useful for props that unexpectedly fail or disconnect from the CAN bus during a game to
-allow smooth, continuous operation. If the inherited prop returns and sends a ping reponse, the prop will no 
-longer be mimic'd.
+Allows the prop to participate in prop inheritance. When a device is sent a ping request multiple times without a ping reponse, any prop with this setting enabled will attempt to request to inherit the missing prop. If the request is successful, the prop will "inherit" the send/receive responsibilities of the missing prop and mimic their ID. This is useful for props that unexpectedly fail or disconnect from the CAN bus during a game to allow smooth, continuous operation. If the inherited prop returns and sends a ping reponse, the prop will no longer be mimic'd.
 
 ## API reference
-The following functions are included in the [puzzle](../puzzle) component to utilize this component:
+The following functions are included to utilize this component:
 
-### bool CAN_Receive(uint32_t delay)
+### bool CAN_Receive(uint32_t delay) note: transfer to puzzle README
 Checks a queue which populates with messages sent to the prop ID for "delay" milliseconds converted from nonblocking FreeRTOS task ticks. The queue can contain an integer value which corresponds to the commands listed in **Table 3**.
 
-Each message is handled automatically by the function and transferred to its 
-respective component. For option 1, change state, the global game state variable 
-will be modified to the requested value. The twai_can components will be blocked 
-from sending additional commands until the puzzle component calls and resolves 
-the command in this function. If **rx_payload[]** is busy being written to by 
-the CAN component, this function will be blocked from executing and return false.
+Each message is handled automatically by the function and transferred to its respective component. For option 1, change state, the global game state variable will be modified to the requested value. The twai_can components will be blocked from sending additional commands until the puzzle component calls and resolves the command in this function. If **rx_payload[]** is busy being written to by the CAN component, this function will be blocked from executing and return false.
 
-### void CAN_Send_State(uint8_t target_id)
-Function called when replying to a ping request. Pushes the state of all of the 
-active components in the prop through the CAN bus to prop with target_id. Avoid
-firing this too frequently to keep the CAN bus decongested.
-
-### bool CAN_Send_Command(uint8_t target_id, uint8_t command)
-Sends a message on the CAN bus with the inputted command to the target_id of the 
-prop. The same messages that can be received are the messages that can be sent. 
-However, a payload corresponding to the command must be sent with the command. 
-The payload must be written to the global variable **tx_payload[]** before 
-calling this function. If **tx_payload[]** is busy being read by the CAN 
-component, this function will be blocked from executing and return false.
+### bool CAN_Send(uint8_t target_id, uint8_t command)
+Sends a message on the CAN bus with the inputted [command](#command) to the target_id of the prop. The same messages that can be received are the messages that can be sent. However, a payload corresponding to the command must be sent with the command. The payload must be written to the global variable **tx_payload[]** before calling this function. If **tx_payload[]** is busy being read by the CAN component, this function will be blocked from executing and return false.
 
 ```
-// Change game state; Requires payload[0] to be written
-tx_payload[0] = 1;     // Set game state to active/ready state
-CAN_Send_Command(1,0); // Change game state of prop with ID 1
+// Set game state
+tx_payload[1] = (0x1 << 4) | 0x1; // Write | Length = 1
+tx_payload[2] = 1;                // Set game state to active/ready state
+CAN_Send(GAME_STATE,1);           // Set game state of prop with ID 1
 
-// Send GPIO output mask; Requires payload[0] thru payload[4] to be written
-tx_payload[0] = 66;    // (0b01000011) Modify GPIO 0, 1, and 6
-tx_payload[1] = 12;    // (0b00001100) Modify GPIO 10, 11
-tx_payload[2] = 0;     // (0b00000000)
-tx_payload[3] = 64;    // (0b01000000) Modify GPIO 30
-tx_payload[4] = 0;     // (0b00000000)
-CAN_Send_Command(1,1); // Send GPIO mask to prop with ID 1
+// Send GPIO output mask
+tx_payload[1] = (0x0 << 4) | 0x5; // Read | Length = 5
+tx_payload[2] = 66;               // (0b01000011) Modify GPIO 0, 1, and 6
+tx_payload[3] = 12;               // (0b00001100) Modify GPIO 10, 11
+tx_payload[4] = 0;                // (0b00000000)
+tx_payload[5] = 64;               // (0b01000000) Modify GPIO 30
+tx_payload[6] = 0;                // (0b00000000)
+CAN_Send(1,GPIO_MASK);            // Send GPIO mask to prop with ID 1
 
-// Send GPIO output state; Only the bits that were last masked matter
-tx_payload[0] = 255;   // (0b11111111) Set all GPIO to HIGH (only 0,1,6 set)
-tx_payload[1] = 0;     // (0b00000000) Set all GPIO to LOW  (only 10,11 set)
-tx_payload[2] = 0;     // (0b00000000) Set all GPIO to LOW  (none set)
-tx_payload[3] = 0;     // (0b00000000) Set all GPIO to LOW  (only 30 set)
-tx_payload[4] = 255;   // (0b11111111) Set all GPIO to HIGH (none set)
-CAN_Send_Command(1,2); // Send GPIO states to prop with ID 1
+// Send GPIO output state
+tx_payload[1] = (0x0 << 4) | 0x5; // Read | Length = 5
+tx_payload[2] = 255;              // (0b11111111) All GPIO HIGH (only 0,1,6 set)
+tx_payload[3] = 0;                // (0b00000000) All GPIO LOW  (only 10,11 set)
+tx_payload[4] = 0;                // (0b00000000) All GPIO LOW  (none set)
+tx_payload[5] = 0;                // (0b00000000) All GPIO LOW  (only 30 set)
+tx_payload[6] = 255;              // (0b11111111) All GPIO HIGH (none set)
+CAN_Send(2,GPIO_STATE);           // Send GPIO states to prop with ID 2
 
-// Play a sound file; Requires payload[0] to be written
-tx_payload[0] = 3;     // Select sound track 3
-CAN_Send_Command(1,3); // Send sound track to play to prop with ID 1
+// Set/Play music track
+tx_payload[1] = (0x1 << 4) | 0x1; // Write | Length = 1
+tx_payload[2] = 3;                // Select sound track 3
+CAN_Send(1,MUSIC);                // Set/Play sound track to play to prop with ID 1
 
-// Send shift_reg output mask; Requires payload[0] thru payload[4] to be written
-tx_payload[0] = 66;    // (0b01000011) Modify PISO 0 pins A, B, and G
-tx_payload[1] = 12;    // (0b00001100) Modify PISO 1 pins C and D
-tx_payload[2] = 0;     // (0b00000000)
-tx_payload[3] = 64;    // (0b01000000) Modify PISO 3 pin G
-tx_payload[4] = 0;     // (0b00000000)
-CAN_Send_Command(1,4); // Send shift_reg mask to prop with ID 1
+// Set shift_reg output mask
+tx_payload[1] = (0x1 << 4) | 0x5; // Write | Length = 5
+tx_payload[2] = 66;               // (0b01000011) Modify PISO 0 pins A, B, and G
+tx_payload[3] = 12;               // (0b00001100) Modify PISO 1 pins C and D
+tx_payload[4] = 0;                // (0b00000000)
+tx_payload[5] = 64;               // (0b01000000) Modify PISO 3 pin G
+tx_payload[6] = 0;                // (0b00000000)
+CAN_Send(1,SHIFT_MASK);           // Set shift_reg mask of prop with ID 1
 
-// Send shift_reg output state; Only the bits that were last masked matter
-tx_payload[0] = 255;   // (0b11111111) Set all PISO 0 pins HIGH (only A,B,G set)
-tx_payload[1] = 0;     // (0b00000000) Set all PISO 1 pins LOW  (only C,D set)
-tx_payload[2] = 0;     // (0b00000000) Set all PISO 2 pins LOW  (none set)
-tx_payload[3] = 0;     // (0b00000000) Set all PISO 3 pins LOW  (only G set)
-tx_payload[4] = 255;   // (0b11111111) Set all PISO 4 pins HIGH (none set)
-CAN_Send_Command(1,5); // Send GPIO states to prop with ID 1
-
-CAN_Send_Command(1,255); // Send ping request to prop with ID 1; No payload
+// Set shift_reg output state
+tx_payload[1] = (0x1 << 4) | 0x5; // Write | Length = 5
+tx_payload[2] = 255;              // (0b11111111) Set all PISO 0 pins HIGH (only A,B,G set)
+tx_payload[3] = 0;                // (0b00000000) Set all PISO 1 pins LOW  (only C,D set)
+tx_payload[4] = 0;                // (0b00000000) Set all PISO 2 pins LOW  (none set)
+tx_payload[5] = 0;                // (0b00000000) Set all PISO 3 pins LOW  (only G set)
+tx_payload[6] = 255;              // (0b11111111) Set all PISO 4 pins HIGH (none set)
+CAN_Send_Command(1,SHIFT_STATE);  // Set shift_reg state of prop with ID 1
 ```

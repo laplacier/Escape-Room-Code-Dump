@@ -1,8 +1,6 @@
 #ifndef shift_reg
 #define shift_reg
 typedef enum {
-    RECEIVE_SIPO_MASK,
-    RECEIVE_SIPO_STATES,
     SET_SIPO_MASK,
     SET_SIPO_STATES,
     SEND_SIPO_STATES,

@@ -57,7 +57,7 @@ uint8_t piso_old[NUM_PISO];
 static void puzzle_main(void *arg){
   // Setup
   static const char* TAG = "User";
-  for(int i=0; i<NUM_PISO; i++){
+  /*for(int i=0; i<NUM_PISO; i++){
     piso_old[i] = dataIn[i];
   }
 
@@ -76,6 +76,10 @@ static void puzzle_main(void *arg){
     shift_write(1,0);
     shift_show();
     vTaskDelay(pdMS_TO_TICKS(1000));
+  }*/
+
+  while(1){
+
   }
 }
 
@@ -109,42 +113,53 @@ static bool CAN_Receive(uint32_t delay){
       ESP_LOGI(TAG, "Command received from CAN bus: %s",cmd[rx_payload[0]]);
       switch(rx_payload[0]){
         case 0: // Change the game state
-          if(rx_payload[1] == game_state){ // Already in the requested state
+          if(game_state == rx_payload[2]){ // Already in the requested state
             ESP_LOGI(TAG, "Game already in requested state!");
             xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
           }
           else{ // Otherwise, change to requested game state
-            game_state = rx_payload[1];
+            game_state = rx_payload[2];
             xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
           }
           break;
-        case 1: // GPIO_Mask of pins to modify
+        case 1: // GPIO mask of pins, write only
           gpio_action = SET_GPIO_MASK;
           xQueueSend(gpio_task_queue, &gpio_action, portMAX_DELAY);
           xSemaphoreGive(gpio_task_sem);
           ESP_LOGI(TAG, "Sent mask to GPIO");
           break;
-        case 2: // GPIO states of pins to modify
-          gpio_action = SET_GPIO_STATES;
+        case 2: // GPIO states of pins to set/send
+          if(rx_payload[1] >> 4){
+            gpio_action = SET_GPIO_STATES;
+          }
+          else{
+            gpio_action = SEND_GPIO_STATES;
+          }
           xQueueSend(gpio_task_queue, &gpio_action, portMAX_DELAY);
           xSemaphoreGive(gpio_task_sem);
           ESP_LOGI(TAG, "Sent states to GPIO");
           break;
-        case 3: // Play music
+        case 3: // Play music, write only
           xTaskNotify(sound_task_handle,rx_payload[1],eSetValueWithOverwrite);
           xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
           break;
-        case 4: // Mask of shift register pins to modify
-          shift_action = RECEIVE_SIPO_MASK;
+        case 4: // Mask of shift register pins, write only
+          shift_action = SET_SIPO_MASK;
           xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
           xSemaphoreGive(shift_task_sem);
           ESP_LOGI(TAG, "Sent mask to Shift Register");
           break;
-        case 5: // States of shift register pins to modify
-          shift_action = RECEIVE_SIPO_STATES;
+        case 5: // States of shift register pins to set/send
+          shift_action = SEND_SIPO_STATES;
           xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
           xSemaphoreGive(shift_task_sem);
           ESP_LOGI(TAG, "Sent states to Shift Register");
+          break;
+        case 6: // NFC Write/Send SOF or Read request
+          break;
+        case 7: // NFC Write/Send continuation
+          break;
+        case 8: // NFC Write/Send EOF
           break;
         default:
           ESP_LOGI(TAG, "Unknown command");

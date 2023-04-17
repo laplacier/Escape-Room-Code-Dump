@@ -43,6 +43,7 @@ static const char *TAG = "pn5180.c";
 
 ISO15693NFC_t nfc;
 uint8_t *writeBuffer = NULL;
+uint8_t readBuffer[508];
 
 //twai_can
 extern SemaphoreHandle_t tx_payload_sem;
@@ -53,20 +54,7 @@ extern uint8_t tx_payload[8];
 ////////////////////////
 // Private Prototypes //
 ////////////////////////
-/**
- * @brief  This command, 0x06, is used to write up to 255 bytes to the EEPROM. The field ‘EEPROM content’ contains the data to be written to EEPROM starting at the address given by byte ‘EEPROM Address’. The data is written in sequential order.
- * 
- * @param  txBuffer MOSI content.
- * @param  txBufferLen Length of MOSI content.
- * @param  rxBuffer MISO content.
- * @param  rxBufferLen Length of MISO content.
- *
- * @return
- *     - ESP_OK  Success
- *     - ESP_ERR_TIMEOUT  BUSY signal line failed to return low
- *
- */
-//esp_err_t pn5180_command(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen);
+static void nfc_task(void *arg);
 static esp_err_t pn5180_txn(spi_device_handle_t dev, const void *tx, int txLen, void *rx, int rxLen);
 static esp_err_t pn5180_busy_wait(uint32_t timeout);
 
@@ -453,7 +441,6 @@ esp_err_t pn5180_sendData(uint8_t *data, uint16_t len, uint8_t validBits) {
  */
 uint8_t *pn5180_readData(int len) {
   if (len > 508) return 0L;
-  uint8_t readBuffer[508];
   uint8_t cmd[2] = { PN5180_READ_DATA, 0x00 };
   pn5180_command(cmd, 2, readBuffer, len);
 

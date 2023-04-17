@@ -8,23 +8,33 @@ Utilizes SN74HC165n and SN74HC595n shift registers to expand the IO capabilities
 This component can be configured by opening the ESP-IDF Configuration editor and navigating to "Prop Shift Register Options".
 
 ## Configuration Options
+
+| Setting                                           | Type | Default |
+|---------------------------------------------------|------|---------|
+| [Enable shift registers](#enable-shift-registers) | bool | true    |
+| [Clock pin](#clock-pin)                           | int  | 15      |
+| [SN74HC165n Load pin](#sn74hc165n-load-pin)       | int  | 2       |
+| [SN74HC165n Data pin](#sn74hc165n-data-pin)       | int  | 13      |
+| [SN74HC595n Latch pin](#sn74hc595n-latch-pin)     | int  | 14      |
+| [SN74HC595n Data pin](#sn74hc595n-data-pin)       | int  | 12      |
+
 ### Enable shift registers
-TRUE by default. This will allow the prop to utilize additional inputs and outputs provided by the shift registers. 8 per register.
+This will allow the prop to utilize additional inputs and outputs provided by the shift registers. 8 per register.
 
-### Shift clock GPIO Pin
-GPIO 15 by default. Can be any unused output capable pin.
+### Clock pin
+Can be any unused output capable pin.
 
-### SN74HC165n load GPIO Pin
-GPIO 2 by default. Can be any unused output capable pin.
+### SN74HC165n Load pin
+Can be any unused output capable pin.
 
-### SN74HC165n data GPIO Pin
-GPIO 13 by default. Can be any unused output capable pin.
+### SN74HC165n Data pin
+Can be any unused output capable pin.
 
-### SN74HC595n latch GPIO Pin
-GPIO 14 by default. Can be any unused output capable pin.
+### SN74HC595n Latch pin
+Can be any unused output capable pin.
 
-### SN74HC595n data GPIO Pin
-GPIO 12 by default. Can be any unused output capable pin.
+### SN74HC595n Data pin
+Can be any unused output capable pin.
 
 ## API reference
 For simplification, a SN74HC165n will be referred to as an input shift register and a SN74HC595n will be an output shift register. The following functions can be called to utilize this component:

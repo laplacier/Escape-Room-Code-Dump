@@ -95,6 +95,7 @@ void rx_task(void *arg){
   twai_message_t rx_msg;
   ctrl_task_action_t ctrl_action;
   xSemaphoreTake(rx_task_sem, portMAX_DELAY); // Blocked from beginning until ctrl_task gives semaphore
+  xSemaphoreGive(rx_payload_sem);
   ESP_LOGI(TAG, "Task initialized");
   while(1){ // Runs forever after taking semaphore
     //Wait for message
@@ -119,6 +120,7 @@ void rx_task(void *arg){
           xSemaphoreGive(ctrl_task_sem);
           break;
         case 6: // Ping response
+          // Implement recording ping responses from other props in this case
           break;
         default: // Unknown command
       }
@@ -130,6 +132,8 @@ void rx_task(void *arg){
 
 void tx_task(void *arg){
   tx_task_action_t action;
+  twai_message_t tx_msg = {.identifier = 0b11000000000 + ID_PROP, .data_length_code = 0,
+                                        .data = {0,0,0,0,0,0,0,0}, .self = 1};
   static const char* TAG = "CAN_Tx";
   ESP_LOGI(TAG, "Task initialized");
   for(;;){
@@ -140,21 +144,38 @@ void tx_task(void *arg){
         if (twai_transmit(&ping_resp, portMAX_DELAY) == ESP_OK) {
           ESP_LOGI(TAG, "Transmitted HELLO");
         } else {
-          ESP_LOGI(TAG, "Failed to transmit HELLO");
+          ESP_LOGE(TAG, "Failed to transmit HELLO");
         }
         break;
       case TX_PING:
+        tx_msg.identifier = (6 << 8) | ID_PROP;
+        tx_msg.data_length_code = sizeof(tx_payload);
+        for(int i=0; i<tx_msg.data_length_code; i++){
+          tx_msg.data[i] = tx_payload[i];
+        }
         //Queue message for transmission
         if (twai_transmit(&ping_resp, portMAX_DELAY) == ESP_OK) {
           ESP_LOGI(TAG, "Transmitted ping response");
         } else {
-          ESP_LOGI(TAG, "Failed to transmit ping response");
+          ESP_LOGE(TAG, "Failed to transmit ping response");
         }
+        xSemaphoreGive(tx_payload_sem);
         break;
+      case TX_DATA:
+        tx_msg.identifier = (6 << 8) | ID_PROP;
+        tx_msg.data_length_code = sizeof(tx_payload);
+        for(int i=0; i<tx_msg.data_length_code; i++){
+          tx_msg.data[i] = tx_payload[i];
+        }
+        if (twai_transmit(&tx_msg, portMAX_DELAY) == ESP_OK) {
+          ESP_LOGI(TAG, "Transmitted status");
+        } else {
+          ESP_LOGE(TAG, "Failed to transmit status");
+        }
+        xSemaphoreGive(tx_payload_sem);
       default:
-        ESP_LOGI(TAG, "Unknown action received: %d",action);
+        ESP_LOGE(TAG, "Unknown action received: %d",action);
     }
-    xSemaphoreGive(tx_payload_sem);
   }
 }
 

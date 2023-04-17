@@ -105,8 +105,6 @@ typedef enum {
 
 extern const char manufacturerCode[110][100];
 
-static void nfc_task(void *arg);
-
 /**
  * @brief  Initialize PN5180 device
  *
