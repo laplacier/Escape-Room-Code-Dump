@@ -16,7 +16,7 @@
 #include "iso15693.h"
 #include "pn5180.h"
 
-//-----------------Prototypes------------------//
+//-------------Private Prototypes--------------//
 static void puzzle_task(void *arg);
 static bool CAN_Receive(uint32_t delay);
 static void puzzle_main(void *arg);
@@ -26,9 +26,8 @@ static void puzzle_main(void *arg);
 //twai_can
 extern QueueHandle_t ctrl_task_queue;
 extern SemaphoreHandle_t ctrl_task_sem;
-extern SemaphoreHandle_t rx_payload_sem;
-extern uint8_t rx_payload[8];
-extern uint8_t tx_payload[8];
+extern SemaphoreHandle_t ctrl_done_sem;
+extern uint8_t tx_payload[9];
 
 //sound
 extern TaskHandle_t sound_task_handle;
@@ -38,7 +37,8 @@ extern QueueHandle_t gpio_task_queue;
 extern SemaphoreHandle_t gpio_task_sem;
 
 //shift_reg
-extern uint8_t dataIn[NUM_PISO]; // Data read from PISO registers
+extern uint8_t pisoData[NUM_PISO];
+extern uint8_t sipoData[NUM_SIPO];
 extern QueueHandle_t shift_task_queue;
 extern SemaphoreHandle_t shift_task_sem;
 
@@ -103,67 +103,20 @@ static void puzzle_task(void *arg){
 
 static bool CAN_Receive(uint32_t delay){
   static const char* TAG = "Puzzle";
-  static const char* cmd[4]= {"STATE","GPIO_MASK","GPIO","PLAY_SOUND"};
   puzzle_task_action_t puzzle_action;
-  gpio_task_action_t gpio_action;
-  shift_task_action_t shift_action;
   if(xSemaphoreTake(puzzle_task_sem, pdMS_TO_TICKS(delay)) == pdTRUE){ // Blocked from executing until ctrl_task gives semaphore
     xQueueReceive(puzzle_task_queue, &puzzle_action, pdMS_TO_TICKS(delay)); // Pull task from queue
-    if(puzzle_action == CMD){ // Received a forced state change from the CAN bus
-      ESP_LOGI(TAG, "Command received from CAN bus: %s",cmd[rx_payload[0]]);
-      switch(rx_payload[0]){
-        case 0: // Change the game state
-          if(game_state == rx_payload[2]){ // Already in the requested state
-            ESP_LOGI(TAG, "Game already in requested state!");
-            xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
-          }
-          else{ // Otherwise, change to requested game state
-            game_state = rx_payload[2];
-            xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
-          }
-          break;
-        case 1: // GPIO mask of pins, write only
-          gpio_action = SET_GPIO_MASK;
-          xQueueSend(gpio_task_queue, &gpio_action, portMAX_DELAY);
-          xSemaphoreGive(gpio_task_sem);
-          ESP_LOGI(TAG, "Sent mask to GPIO");
-          break;
-        case 2: // GPIO states of pins to set/send
-          if(rx_payload[1] >> 4){
-            gpio_action = SET_GPIO_STATES;
-          }
-          else{
-            gpio_action = SEND_GPIO_STATES;
-          }
-          xQueueSend(gpio_task_queue, &gpio_action, portMAX_DELAY);
-          xSemaphoreGive(gpio_task_sem);
-          ESP_LOGI(TAG, "Sent states to GPIO");
-          break;
-        case 3: // Play music, write only
-          xTaskNotify(sound_task_handle,rx_payload[1],eSetValueWithOverwrite);
-          xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
-          break;
-        case 4: // Mask of shift register pins, write only
-          shift_action = SET_SIPO_MASK;
-          xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
-          xSemaphoreGive(shift_task_sem);
-          ESP_LOGI(TAG, "Sent mask to Shift Register");
-          break;
-        case 5: // States of shift register pins to set/send
-          shift_action = SEND_SIPO_STATES;
-          xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
-          xSemaphoreGive(shift_task_sem);
-          ESP_LOGI(TAG, "Sent states to Shift Register");
-          break;
-        case 6: // NFC Write/Send SOF or Read request
-          break;
-        case 7: // NFC Write/Send continuation
-          break;
-        case 8: // NFC Write/Send EOF
-          break;
-        default:
-          ESP_LOGI(TAG, "Unknown command");
-      }
+    switch(puzzle_action){ // Received a forced state change from the CAN bus
+      case SET_STATE: // Change the game state
+        game_state = tx_payload[2];
+        xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+        break;
+      case SEND_STATE:
+        tx_payload[0] = (0x0 << 4) | 0x1;              // Read | Length = 1
+        tx_payload[2] = 0;                             // GAME_STATE
+        tx_payload[3] = game_state;                    // GAME_STATE payload
+        xSemaphoreGive(ctrl_done_sem);                 // Let ctrl_task know data is ready
+        break;
     }
     return 1;
   }

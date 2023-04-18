@@ -2,7 +2,8 @@
 #define puzzle
 
 typedef enum {
-    CMD
+    SET_STATE,
+    SEND_STATE
 } puzzle_task_action_t;
 
 // FreeRTOS task priorities

@@ -14,10 +14,8 @@
 
 extern SemaphoreHandle_t puzzle_task_sem;
 extern QueueHandle_t puzzle_task_queue;
-extern SemaphoreHandle_t tx_payload_sem;
-extern SemaphoreHandle_t rx_payload_sem;
-extern uint8_t tx_payload[8];
-extern uint8_t rx_payload[8];
+extern SemaphoreHandle_t ctrl_done_sem;
+extern uint8_t tx_payload[9];
 
 TaskHandle_t shift_task_handle;
 SemaphoreHandle_t shift_task_sem;
@@ -128,33 +126,33 @@ static void shift_task(void *arg){
       switch(shift_action){
         case SET_SIPO_MASK:
           for(int i=0; i<NUM_SIPO; i++){
-            maskSIPO[i] = rx_payload[i+3]; // Copy byte of mask to now empty byte in var
+            maskSIPO[i] = tx_payload[i+3]; // Copy byte of mask to now empty byte in var
           }
-          xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
           ESP_LOGI(TAG, "Set mask");
           break;
         case SET_SIPO_STATES:
           for(int i=0; i<NUM_SIPO; i++){
             sipoData[i] &= ~(maskSIPO[i]);
-            sipoData[i] |= (rx_payload[i+3] & maskSIPO[i]);
+            sipoData[i] |= (tx_payload[i+3] & maskSIPO[i]);
           }
-          xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
           sipo_update();
           ESP_LOGI(TAG, "Set output states");
           break;
         case SEND_SIPO_STATES:                                      // Command: Send states to CAN_TX payload
-          xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
           tx_payload[1] = 5;
           for(int i=0; i<NUM_SIPO; i++){
             tx_payload[i+2] = sipoData[i]; // Transfer the current state bytes to the CAN_TX payload
           }
+          xSemaphoreGive(ctrl_done_sem);
           break;
         case SEND_PISO_STATES:                                      // Command: Send states to CAN_TX payload
-          xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
           tx_payload[1] = 6;
           for(int i=0; i<NUM_PISO; i++){
             tx_payload[i+2] = pisoData[i]; // Transfer the current state bytes to the CAN_TX payload
           }
+          xSemaphoreGive(ctrl_done_sem);
           break;
       }
     }

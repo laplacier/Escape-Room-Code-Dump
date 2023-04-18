@@ -46,10 +46,8 @@ uint8_t *writeBuffer = NULL;
 uint8_t readBuffer[508];
 
 //twai_can
-extern SemaphoreHandle_t tx_payload_sem;
-extern SemaphoreHandle_t rx_payload_sem;
-extern uint8_t rx_payload[8];
-extern uint8_t tx_payload[8];
+extern SemaphoreHandle_t ctrl_done_sem;
+extern uint8_t tx_payload[9];
 
 ////////////////////////
 // Private Prototypes //
@@ -133,7 +131,7 @@ static void nfc_task(void *arg){
       switch(nfc_action){
         case WRITE_DATA:
           uint8_t rxLength = 6;
-          if(rx_payload[0] == 0x06){ // WRITE_DATA SOF
+          if(tx_payload[0] == 0x06){ // WRITE_DATA SOF
             if(writeBuffer != NULL){
               free(writeBuffer);
               writeBuffer = NULL;
@@ -141,21 +139,20 @@ static void nfc_task(void *arg){
             writeBuffer = (uint8_t*)malloc(memSize * sizeof(uint8_t));
             writeBufferPos = 0;
           }
-          else if(rx_payload[0] == 0x08){ // WRITE_DATA EOF
+          else if(tx_payload[0] == 0x08){ // WRITE_DATA EOF
             flag_nfcWrite = 1;
             if(!(memSize % 6)){
               rxLength = memSize % 6;
             }
           }
           for(int i=0; i<rxLength; i++){
-            writeBuffer[writeBufferPos++] = rx_payload[i+1];
+            writeBuffer[writeBufferPos++] = tx_payload[i+1];
           }
-          xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
           break;
         case SEND_DATA:                                      // Command: Send states to CAN_TX payload
           uint16_t numTxn = memSize / 6;
           for(int i=0; i<numTxn; i++){
-            xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
             if(i == 0){
               tx_payload[1] = 6; // SEND_DATA SOF
             }

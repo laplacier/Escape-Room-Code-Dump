@@ -25,19 +25,19 @@ Messages sent on the CAN network follow the ISO11898-1 standard implementation. 
 
 
 ### Message Priority
-Identifies the significance of the message. The lower the value, the higher the priority. Messages with a higher priority will send first when sent at the same time as a lower priority message. Lower priority messages will be tried again after the higher priority message is finished sending.
+Identifies the significance and type of the message. The lower the value, the higher the priority. Messages with a higher priority will send first when sent at the same time as a lower priority message. Lower priority messages will be tried again after the higher priority message is finished sending.
 
 **Table 2. Priority Information**
-| Value |         Description         |
-|------:|-----------------------------|
-|   0   | Command to ALL props        |
-|   1   | Command to ONE prop         |
-|   2   | Unused                      |
-|   3   | Unused                      |
-|   4   | Inheritance (unimplemented) |
-|   5   | Ping to ALL props           |
-|   6   | Ping response               |
-|   7   | Ping to ONE prop            |
+| Value |               Description              |
+|------:|----------------------------------------|
+|   0   | [Write command to ALL props](#command) |
+|   1   | [Write command to ONE prop](#command)  |
+|   2   | [Read command](#command)               |
+|   3   | Unused                                 |
+|   4   | [Inheritance](#prop-inheritance)       |
+|   5   | [Ping to ALL props](#ping-requests)    |
+|   6   | [Ping response](#ping-requests)        |
+|   7   | [Ping to ONE prop](#ping-requests)     |
 
 ### Sender ID
 The ID of the prop that generated the message. For ping transactions, the Sender ID of the ping request becomes the the Target ID of the ping response.
@@ -49,7 +49,7 @@ The number of bytes included in the CAN data frame. A minimum of 1 byte will be 
 The ID of the prop the message is intended for. All props will see the message regardless of which prop the message is intended for and can choose to keep a record or ignore the message.
 
 ### Command
-The instruction to be carried out by the target prop. **Table 3** describes the commands that can be issued:
+The instruction to be carried out by the target prop. **Table 3** describes the commands contained in a regular command. For ping requests, see [Ping requests](#ping-requests).
 
 **Table 3. Issuable Commands**
 | Value |         Component         |                          Description                           |
@@ -67,18 +67,27 @@ The instruction to be carried out by the target prop. **Table 3** describes the 
 ### Command Payload
 Additional instructions as required by the prop to accompany the command. Click on a command in **Table 3** to navigate to the payload description and options for each command.
 
+## Ping requests
+During operation, a ping request may be received to confirm existence or state. **Table 4** describes the commands contained in a ping request. A ping request contains no payload.
+
+**Table 4. Ping Request Commands**
+| Value | Description         |
+|-------|---------------------|
+| 0     | Send empty response |
+| 1     | Send ALL states     |
+
 ## How to configure
 This component can be configured by opening the ESP-IDF Configuration editor and navigating to "Prop CAN Options".
 
 **Table 4. Configuration Options**
-|                  Setting                  | Type | Default                |
-|-------------------------------------------|------|------------------------|
-| [Enable CAN](#enable-can)                 | bool | True                   |
-| [CAN_TX Pin](#can_tx-pin)                 | int  | 33                     |
-| [CAN_RX Pin](#can_rx-pin)                 | int  | 32                     |
-| [Prop ID](#prop-id)                       | int  | 1                      |
-| [Operation Mode](#operation-mode)         | enum | "Receive and Transmit" |
-| [Enable Inheritance](#enable-inheritance) | bool | false                  |
+|                 Setting                 | Type | Default                |
+|-----------------------------------------|------|------------------------|
+| [Enable CAN](#enable-can)               | bool | True                   |
+| [CAN_TX Pin](#can_tx-pin)               | int  | 33                     |
+| [CAN_RX Pin](#can_rx-pin)               | int  | 32                     |
+| [Prop ID](#prop-id)                     | int  | 1                      |
+| [Operation Mode](#operation-mode)       | enum | "Receive and Transmit" |
+| [Enable Inheritance](#prop-inheritance) | bool | false                  |
 
 ### Enable CAN
 Allow the prop to use CAN, which is the primary method for communicating between props. If CAN is disabled, the prop's default game stage will be 1 (Active) instead of 0 (Idle/Disabled) to prevent the prop from being unable to activate. You will need to be sure to develop your own method to reset the puzzle upon completion if CAN is disabled.
@@ -97,8 +106,8 @@ Receive and Transmit - Normal operation. Can send and receive messages on the CA
     
 Listen only - Can receive messages on the CAN bus and ACK them, but will not send messages or respond to message requests.
 
-### Prop inheritance (unimplemented)
-Allows the prop to participate in prop inheritance. When a device is sent a ping request multiple times without a ping reponse, any prop with this setting enabled will attempt to request to inherit the missing prop. If the request is successful, the prop will "inherit" the send/receive responsibilities of the missing prop and mimic their ID. This is useful for props that unexpectedly fail or disconnect from the CAN bus during a game to allow smooth, continuous operation. If the inherited prop returns and sends a ping reponse, the prop will no longer be mimic'd.
+### Prop inheritance
+*CURRENTLY UNIMPLEMENTED*. Allows the prop to participate in prop inheritance. When a device is sent a ping request multiple times without a ping reponse, any prop with this setting enabled will attempt to request to inherit the missing prop. If the request is successful, the prop will "inherit" the send/receive responsibilities of the missing prop and mimic their ID. This is useful for props that unexpectedly fail or disconnect from the CAN bus during a game to allow smooth, continuous operation. If the inherited prop returns and sends a ping reponse, the prop will no longer be mimic'd.
 
 ## API reference
 The following functions are included to utilize this component:

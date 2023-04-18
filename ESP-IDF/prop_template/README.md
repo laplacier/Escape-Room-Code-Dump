@@ -50,11 +50,11 @@ nfc-->puzzle_task;
 ```
 
 ## Global Variables
-### uint8_t rx_payload[8], tx_payload[8]
+### uint8_t rx_payload[9], tx_payload[9]
 
-| **xx_payload**  |   [0]   |     [1]      | [2]-[7] |
-|-----------------|:-------:|:------------:|:-------:|
-| **Description** | Command | R/W & Length | Payload |
+| **xx_payload**  |     [0]      |    [1]    |   [2]   | [3]-[8] |
+|-----------------|:------------:|:---------:|:-------:|:-------:|
+| **Description** | R/W & Length | Target_ID | Command | Payload |
 
 #### Command
 See [CAN Commands](../twai_can/README.md#command)
@@ -67,8 +67,8 @@ The payload data accompanying the command.
 
 rx_task waits for semaphore to be available to overwrite rx_payload
 
-components receive command to read rx_payload and give a semaphore when finished reading
+component receives command to read rx_payload and gives a semaphore when finished reading
 
-components wait for semaphore to be available to overwrite tx_payload
+component waits for semaphore to be available to overwrite tx_payload
 
 tx_task receives command to read tx_payload and gives a semaphore when finished reading
