@@ -52,14 +52,14 @@ nfc-->puzzle_task;
 ## Global Variables
 ### uint8_t rx_payload[9], tx_payload[9]
 
-| **xx_payload**  |     [0]      |    [1]    |   [2]   | [3]-[8] |
-|-----------------|:------------:|:---------:|:-------:|:-------:|
-| **Description** | R/W & Length | Target_ID | Command | Payload |
+| **xx_payload**  |       [0]      |    [1]    |   [2]   | [3]-[8] |
+|-----------------|:--------------:|:---------:|:-------:|:-------:|
+| **Description** | Flags & Length | Target_ID | Command | Payload |
 
 #### Command
 See [CAN Commands](../twai_can/README.md#command)
 
-#### R/W & Length
+#### Flags & Length
 The 4 MSB determine if the command is a read (0000) or write (0001). The 4 LSB describe the length of the payload to read proceding the index. Maximum command payload is 6 bytes.
 
 #### Payload

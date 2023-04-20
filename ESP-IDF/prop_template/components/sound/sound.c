@@ -7,6 +7,10 @@
 #include "esp_log.h"
 #include "sound.h"
 
+// CAN
+extern SemaphoreHandle_t ctrl_done_sem;
+extern tx_payload[9];
+
 TaskHandle_t sound_task_handle;
 void sound_init(void) 
 {
@@ -76,5 +80,8 @@ void sound_task(void *arg){
     xTaskNotifyWait(0X00, ULONG_MAX, &track, portMAX_DELAY); // Blocked from executing until puzzle_task gives track to play
     sendAudioCommand(0x03,(uint8_t)track);                            // Play track.mp3 in the MP3 folder of the DFPlayer Mini
     ESP_LOGI(TAG, "Playing %d.mp3",(uint8_t)track);
+    if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
+      xSemaphoreGive(ctrl_done_sem);
+    }
   }
 }

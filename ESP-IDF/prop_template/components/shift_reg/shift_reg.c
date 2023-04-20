@@ -128,7 +128,6 @@ static void shift_task(void *arg){
           for(int i=0; i<NUM_SIPO; i++){
             maskSIPO[i] = tx_payload[i+3]; // Copy byte of mask to now empty byte in var
           }
-          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
           ESP_LOGI(TAG, "Set mask");
           break;
         case SET_SIPO_STATES:
@@ -136,21 +135,29 @@ static void shift_task(void *arg){
             sipoData[i] &= ~(maskSIPO[i]);
             sipoData[i] |= (tx_payload[i+3] & maskSIPO[i]);
           }
-          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+          if(tx_payload[0] & FLAG_RES){
+            tx_payload[0] &= 0xF0;
+            tx_payload[0] |= NUM_SIPO;                         // Read | Length = NUM_SIPO
+            xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+          }
           sipo_update();
           ESP_LOGI(TAG, "Set output states");
           break;
         case SEND_SIPO_STATES:                                      // Command: Send states to CAN_TX payload
-          tx_payload[1] = 5;
+          tx_payload[0] &= 0xF0;
+          tx_payload[0] |= NUM_SIPO;                         // Read | Length = NUM_SIPO
+          tx_payload[2] = 5;
           for(int i=0; i<NUM_SIPO; i++){
-            tx_payload[i+2] = sipoData[i]; // Transfer the current state bytes to the CAN_TX payload
+            tx_payload[i+3] = sipoData[i]; // Transfer the current state bytes to the CAN_TX payload
           }
           xSemaphoreGive(ctrl_done_sem);
           break;
         case SEND_PISO_STATES:                                      // Command: Send states to CAN_TX payload
-          tx_payload[1] = 6;
+          tx_payload[0] &= 0xF0;
+          tx_payload[0] |= NUM_PISO;                         // Read | Length = NUM_PISO
+          tx_payload[2] = 6;
           for(int i=0; i<NUM_PISO; i++){
-            tx_payload[i+2] = pisoData[i]; // Transfer the current state bytes to the CAN_TX payload
+            tx_payload[i+3] = pisoData[i]; // Transfer the current state bytes to the CAN_TX payload
           }
           xSemaphoreGive(ctrl_done_sem);
           break;

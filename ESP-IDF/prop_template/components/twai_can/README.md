@@ -57,7 +57,7 @@ The instruction to be carried out by the target prop. **Table 3** describes the 
 | 0     | [puzzle](../puzzle)       | [GAME_STATE](../puzzle/README.md#set-game-state)               |
 | 1     | [GPIO](../gpio_prop)      | [GPIO_MASK](../gpio_prop/README.md#set-gpio-mask)              |
 | 2     | [GPIO](../gpio_prop)      | [GPIO_STATE](../gpio_prop/README.md#set-gpio-state)            |
-| 3     | [music](../music)         | [MUSIC](../music/README.md#set-music)                          |
+| 3     | [sound](../sound)         | [SOUND](../sound/README.md#set-sound)                          |
 | 4     | [shift_reg](../shift_reg) | [SHIFT_MASK](../shift_reg/README.md#set-shift-register-mask)   |
 | 5     | [shift_reg](../shift_reg) | [SHIFT_STATE](../shift_reg/README.md#set-shift-register-state) |
 | 6     | [nfc](../nfc)             | [NFC_SOF](../nfc/README.md#write-nfc-tag)                      |

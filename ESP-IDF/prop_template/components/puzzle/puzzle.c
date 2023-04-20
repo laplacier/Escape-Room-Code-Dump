@@ -109,10 +109,13 @@ static bool CAN_Receive(uint32_t delay){
     switch(puzzle_action){ // Received a forced state change from the CAN bus
       case SET_STATE: // Change the game state
         game_state = tx_payload[2];
-        xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+        if(tx_payload[0] & FLAG_RES){
+          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+        }
         break;
       case SEND_STATE:
-        tx_payload[0] = (0x0 << 4) | 0x1;              // Read | Length = 1
+        tx_payload[0] &= 0xF0;
+        tx_payload[0] |= 0x01;                         // Read | Length = 1
         tx_payload[2] = 0;                             // GAME_STATE
         tx_payload[3] = game_state;                    // GAME_STATE payload
         xSemaphoreGive(ctrl_done_sem);                 // Let ctrl_task know data is ready
