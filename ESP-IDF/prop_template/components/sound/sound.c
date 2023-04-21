@@ -7,11 +7,11 @@
 #include "esp_log.h"
 #include "sound.h"
 
-// CAN
-extern SemaphoreHandle_t ctrl_done_sem;
-extern tx_payload[9];
-
 TaskHandle_t sound_task_handle;
+
+static void sendAudioCommand(uint8_t command, uint16_t parameter);
+static void sound_task(void *arg);
+
 void sound_init(void) 
 {
   const uart_config_t uart_config = {
@@ -38,7 +38,7 @@ void sound_init(void)
   ESP_LOGI("Sound", "Setup complete");
 }
 
-void sendAudioCommand(uint8_t command, uint16_t parameter){
+static void sendAudioCommand(uint8_t command, uint16_t parameter){
   //------------------ CREATE INSTRUCTION -------------------------//
   uint8_t startByte     = 0x7E; // Start
   uint8_t versionByte   = 0xFF; // Version
@@ -73,15 +73,12 @@ void sendAudioCommand(uint8_t command, uint16_t parameter){
   vTaskDelay(100 / portTICK_PERIOD_MS);           // Wait for the DFPlayer Mini to process the instruction
 }
 
-void sound_task(void *arg){
+static void sound_task(void *arg){
   static const char* TAG = "Sound";
   uint32_t track;
   while(1){
     xTaskNotifyWait(0X00, ULONG_MAX, &track, portMAX_DELAY); // Blocked from executing until puzzle_task gives track to play
     sendAudioCommand(0x03,(uint8_t)track);                            // Play track.mp3 in the MP3 folder of the DFPlayer Mini
     ESP_LOGI(TAG, "Playing %d.mp3",(uint8_t)track);
-    if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
-      xSemaphoreGive(ctrl_done_sem);
-    }
   }
 }

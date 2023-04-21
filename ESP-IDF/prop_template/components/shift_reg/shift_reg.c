@@ -12,8 +12,8 @@
 #include "sound.h"
 #include "gpio_prop.h"
 
-extern SemaphoreHandle_t puzzle_task_sem;
-extern QueueHandle_t puzzle_task_queue;
+extern QueueHandle_t ctrl_task_queue;
+extern SemaphoreHandle_t ctrl_task_sem;
 extern SemaphoreHandle_t ctrl_done_sem;
 extern uint8_t tx_payload[9];
 
@@ -24,6 +24,8 @@ QueueHandle_t shift_task_queue;
 static uint8_t maskSIPO[NUM_SIPO]; // Mask applied to SIPO registers
 uint8_t sipoData[NUM_SIPO];        // Data sent to SIPO registers
 uint8_t pisoData[NUM_PISO];        // Data read from PISO registers
+uint8_t sipoData_old[NUM_SIPO];    // Last SIPO state
+uint8_t pisoData_old[NUM_PISO];    // Last PISO state
 
 static void piso_update(void);
 static void sipo_update(void);
@@ -83,9 +85,7 @@ void shift_write(uint8_t pin, bool val){
 }
 
 void shift_show(void){
-  shift_task_action_t shift_action = SET_SIPO_STATES;
-  xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
-  xSemaphoreGive(shift_task_sem);
+  sipo_update();
 }
 
 static void pulsePin(uint8_t pinName, uint32_t pulseTime){
@@ -96,6 +96,9 @@ static void pulsePin(uint8_t pinName, uint32_t pulseTime){
 }
 
 static void piso_update(void){
+  ctrl_task_action_t ctrl_action = CTRL_SEND_SHIFT_PISO;
+  bool flag_send_CAN = 0;
+
   gpio_write(SHIFT_CLOCK_GPIO, 1);               // Data is shifted when clock pin changes from LOW to HIGH, so ensure it starts HIGH
   pulsePin(PISO_LOAD_GPIO, 5);                             // Pulse load pin to snapshot all PISO pin states and start at the beginning
   for(int i=0; i<NUM_PISO; i++){                     // For each PISO register...
@@ -103,23 +106,46 @@ static void piso_update(void){
       bitWrite(pisoData[i], j, gpio_read(PISO_DATA_GPIO)); // Write the current bit to the corresponding bit in the input variable
       pulsePin(SHIFT_CLOCK_GPIO, 5);                        // Pulse the clock to shift the next bit in from the PISO register
     }
+    if(pisoData_old[i] != pisoData[i]){
+      flag_send_CAN = 1;
+      pisoData_old[i] = pisoData[i];
+    }
+  }
+
+  if(flag_send_CAN){
+    xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY);
+    xSemaphoreGive(ctrl_task_sem);
   }
 }
 
 static void sipo_update(void){
+  ctrl_task_action_t ctrl_action = CTRL_SEND_SHIFT_SIPO;
+  bool flag_send_CAN = 0;
+
   for(int i=NUM_SIPO-1; i>=0; i--){
     for(int j=7; j>=0; j--){
       gpio_write(SIPO_DATA_GPIO, bitRead(sipoData[i], j));
       pulsePin(SHIFT_CLOCK_GPIO, 5);
     }
+    if(sipoData_old[i] != sipoData[i]){
+      flag_send_CAN = 1;
+      sipoData_old[i] = sipoData[i];
+    }
   }
   pulsePin(SIPO_LATCH_GPIO, 5);
   ESP_LOGI("sipo","%d",sipoData[0]);
+
+  if(flag_send_CAN){
+    xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY);
+    xSemaphoreGive(ctrl_task_sem);
+  }
 }
 
 static void shift_task(void *arg){
+  can_command_t command;
   shift_task_action_t shift_action;
   static const char* TAG = "Shift_Reg";
+  
   while(1){
     if(xSemaphoreTake(shift_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
       xQueueReceive(shift_task_queue, &shift_action, portMAX_DELAY); // Pull task from queue
@@ -135,27 +161,24 @@ static void shift_task(void *arg){
             sipoData[i] &= ~(maskSIPO[i]);
             sipoData[i] |= (tx_payload[i+3] & maskSIPO[i]);
           }
-          if(tx_payload[0] & FLAG_RES){
-            tx_payload[0] &= 0xF0;
-            tx_payload[0] |= NUM_SIPO;                         // Read | Length = NUM_SIPO
-            xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
-          }
           sipo_update();
           ESP_LOGI(TAG, "Set output states");
           break;
         case SEND_SIPO_STATES:                                      // Command: Send states to CAN_TX payload
+          command = SHIFT_SIPO_STATE;
           tx_payload[0] &= 0xF0;
           tx_payload[0] |= NUM_SIPO;                         // Read | Length = NUM_SIPO
-          tx_payload[2] = 5;
+          tx_payload[2] = (uint8_t)command;
           for(int i=0; i<NUM_SIPO; i++){
             tx_payload[i+3] = sipoData[i]; // Transfer the current state bytes to the CAN_TX payload
           }
           xSemaphoreGive(ctrl_done_sem);
           break;
         case SEND_PISO_STATES:                                      // Command: Send states to CAN_TX payload
+          command = SHIFT_PISO_STATE;
           tx_payload[0] &= 0xF0;
           tx_payload[0] |= NUM_PISO;                         // Read | Length = NUM_PISO
-          tx_payload[2] = 6;
+          tx_payload[2] = command;
           for(int i=0; i<NUM_PISO; i++){
             tx_payload[i+3] = pisoData[i]; // Transfer the current state bytes to the CAN_TX payload
           }
@@ -164,5 +187,6 @@ static void shift_task(void *arg){
       }
     }
     piso_update();
+
   }
 }

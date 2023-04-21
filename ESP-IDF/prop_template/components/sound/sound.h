@@ -7,7 +7,4 @@
 #define GENERIC_TASK_PRIO 1  // Any unspecified task
 
 void sound_init(void);
-void sendAudioCommand(uint8_t command, uint16_t parameter);
-void sound_task(void *arg);
-
 #endif

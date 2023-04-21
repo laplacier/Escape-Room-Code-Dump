@@ -33,7 +33,13 @@
 typedef enum {
     CTRL_HELLO,
     CTRL_PING,
-    CTRL_CMD
+    CTRL_CMD,
+    CTRL_SEND_PUZZLE,
+    CTRL_SEND_GPIO,
+    CTRL_SEND_SOUND,
+    CTRL_SEND_SHIFT_SIPO,
+    CTRL_SEND_SHIFT_PISO,
+    CTRL_SEND_NFC
 } ctrl_task_action_t;
 
 typedef enum {
@@ -45,20 +51,29 @@ typedef enum {
 } tx_task_action_t;
 
 typedef enum {
+    RX_WRITE_ALL,
+    RX_WRITE,
+    RX_READ,
+    RX_UNUSED,
+    RX_INHERIT,
+    RX_PING_REQ_ALL,
+    RX_PING_RES,
+    RX_PING_REQ
+} rx_task_action_t;
+
+typedef enum {
     GAME_STATE,
     GPIO_MASK,
     GPIO_STATE,
     SOUND,
-    SHIFT_MASK,
-    SHIFT_STATE,
+    SHIFT_SIPO_MASK,
+    SHIFT_SIPO_STATE,
+    SHIFT_PISO_STATE,
     NFC_SOF,
     NFC_DATA,
     NFC_EOF
 } can_command_t;
 
-void ctrl_task(void *arg);
-void rx_task(void *arg);
-void tx_task(void *arg);
 void fake_bus_task(void *arg);
 void twai_can_init(void);
 

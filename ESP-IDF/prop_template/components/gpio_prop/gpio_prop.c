@@ -41,10 +41,8 @@
 
 extern SemaphoreHandle_t puzzle_task_sem;
 extern QueueHandle_t puzzle_task_queue;
-extern SemaphoreHandle_t tx_payload_sem;
-extern SemaphoreHandle_t rx_payload_sem;
+extern SemaphoreHandle_t ctrl_done_sem;
 extern uint8_t tx_payload[8];
-extern uint8_t rx_payload[8];
 
 SemaphoreHandle_t gpio_task_sem;
 QueueHandle_t gpio_task_queue;
@@ -88,22 +86,25 @@ void gpio_task(void *arg){
   while(1){
     if(xSemaphoreTake(gpio_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
       xQueueReceive(gpio_task_queue, &gpio_action, portMAX_DELAY); // Pull task from queue
+      uint8_t rxLength = tx_payload[0] & 0x0F;
+      if(rxLength > 5) rxLength = 5;
       switch(gpio_action){
         case SET_GPIO_MASK:
           gpio_mask = 0;
-          for(int i=0; i<5; i++){
+          for(int i=0; i<rxLength; i++){
             BYTESHIFTL(gpio_mask,1); // Shift previous data over by a byte
-            gpio_mask |= rx_payload[i+1]; // Copy byte of mask to now empty byte in var
+            gpio_mask |= tx_payload[i+3]; // Copy byte of mask to now empty byte in var
           }
           gpio_mask &= ~(mask_protect); // Remove pins used by other components from mask
           ESP_LOGI(TAG, "Set mask");
           break;
         case SET_GPIO_STATES:
           gpio_states = 0;
-          for(int i=0; i<5; i++){
+          for(int i=0; i<rxLength; i++){
             BYTESHIFTL(gpio_states,1);      // Shift previous data over by a byte
-            gpio_states |= rx_payload[i+1]; // Copy byte of pins to modify to now empty byte in var
+            gpio_states |= tx_payload[i+3]; // Copy byte of pins to modify to now empty byte in var
           }
+          if(tx_payload[0] & FLAG_RES) xSemaphoreGive(ctrl_done_sem);
           for(int i=0; i<34; i++){ // GPIO 34+ cannot be output, ignore
             if(gpio_mask & BIT(i)){ // If this pin is being set...
               gpio_set_level(i, ((gpio_states >> i) & 1U)); // Set the state of the pin
@@ -116,14 +117,13 @@ void gpio_task(void *arg){
           for(int i=0; i<39; i++){ // Snapshot state of all GPIO pins
             bitWrite(gpio_states,i,gpio_get_level(i));
           }
-          xSemaphoreTake(tx_payload_sem, portMAX_DELAY);     // Blocked from continuing until tx_payload is available
           tx_payload[1] = 1;
           for(int i=0; i<5; i++){
             tx_payload[i+2] = READBYTE(gpio_states,i); // Transfer the current state byte to the CAN_TX payload
           }
+          xSemaphoreGive(ctrl_done_sem);
           break;
       }
-      xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
     }
   }
 }

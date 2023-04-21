@@ -38,6 +38,7 @@
 #define PIN_NUM_RST  17
 spi_device_handle_t pn5180;
 SemaphoreHandle_t nfc_task_sem;
+SemaphoreHandle_t nfc_cont_sem;
 QueueHandle_t nfc_task_queue;
 static const char *TAG = "pn5180.c";
 
@@ -115,6 +116,7 @@ void pn5180_init(void){
   // NFC task, queue, sem
   nfc_task_queue = xQueueCreate(1, sizeof(nfc_task_action_t));
   nfc_task_sem = xSemaphoreCreateCounting( 10, 0 );
+  nfc_cont_sem = xSemaphoreCreateBinary();
   xTaskCreatePinnedToCore(nfc_task, "NFC", 4096, NULL, GENERIC_TASK_PRIO, NULL, tskNO_AFFINITY);
 }
 
@@ -130,8 +132,8 @@ static void nfc_task(void *arg){
       xQueueReceive(nfc_task_queue, &nfc_action, portMAX_DELAY); // Pull task from queue
       switch(nfc_action){
         case WRITE_DATA:
-          uint8_t rxLength = 6;
-          if(tx_payload[0] == 0x06){ // WRITE_DATA SOF
+          uint8_t rxLength = (tx_payload[0] & 0x0F) - 1;
+          if(tx_payload[2] == 0x06){ // WRITE_DATA SOF
             if(writeBuffer != NULL){
               free(writeBuffer);
               writeBuffer = NULL;
@@ -139,31 +141,34 @@ static void nfc_task(void *arg){
             writeBuffer = (uint8_t*)malloc(memSize * sizeof(uint8_t));
             writeBufferPos = 0;
           }
-          else if(tx_payload[0] == 0x08){ // WRITE_DATA EOF
+          else if(tx_payload[2] == 0x08){ // WRITE_DATA EOF
             flag_nfcWrite = 1;
-            if(!(memSize % 6)){
-              rxLength = memSize % 6;
-            }
           }
           for(int i=0; i<rxLength; i++){
-            writeBuffer[writeBufferPos++] = tx_payload[i+1];
+            if(writeBufferPos < memSize)
+              writeBuffer[writeBufferPos++] = tx_payload[i+1];
           }
-          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+          xSemaphoreGive(ctrl_done_sem); // Inform ctrl_task tx_payload is ready
           break;
         case SEND_DATA:                                      // Command: Send states to CAN_TX payload
           uint16_t numTxn = memSize / 6;
           for(int i=0; i<numTxn; i++){
             if(i == 0){
-              tx_payload[1] = 6; // SEND_DATA SOF
+              tx_payload[2] = 6; // SEND_DATA SOF
             }
             else if(i == numTxn - 1){
-              tx_payload[1] = 8; // SEND_DATA EOF
+              tx_payload[2] = 8; // SEND_DATA EOF
             }
             else{
-              tx_payload[1] = 7; // SEND_DATA
+              tx_payload[2] = 7; // SEND_DATA
             }
             for(int j=0; j<6; j++){
-              tx_payload[j+2] = nfc.blockData[(i*6) + j]; // Transfer the NFC bytes to the CAN_TX payload
+              tx_payload[j+3] = nfc.blockData[(i*6) + j]; // Transfer the NFC bytes to the CAN_TX payload
+            }
+            xSemaphoreGive(ctrl_done_sem); // Inform ctrl_task tx_payload is ready
+            if(xSemaphoreTake(nfc_cont_sem, pdMS_TO_TICKS(10000)) != ESP_OK){ // Wait for ctrl_task to process tx_payload with timeout
+              ESP_LOGE(TAG, "Timeout waiting to send data");
+              break;
             }
           }
           break;

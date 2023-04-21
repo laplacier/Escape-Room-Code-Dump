@@ -21,10 +21,10 @@ static const twai_timing_config_t t_config = TWAI_TIMING_CONFIG_125KBITS();
 static const twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_GPIO, CAN_RX_GPIO, TWAI_MODE_NO_ACK);
 //static const twai_message_t ping_resp = {.identifier = 0b11000000000 + ID_PROP, .data_length_code = 0,
 //                                         .data = {0,0,0,0,0,0,0,0}, .self = 1};
-static void ctrl_task(void *arg)
+static void ctrl_task(void *arg);
 static void ctrl_router();
-static void tx_task(void *arg)
-static void rx_task(void *arg)
+static void tx_task(void *arg);
+static void rx_task(void *arg);
 
 QueueHandle_t ctrl_task_queue;
 QueueHandle_t tx_task_queue;
@@ -84,7 +84,7 @@ void twai_can_init(void){
   ESP_LOGI("TWAI_CAN", "Setup complete");
 }
 
-void ctrl_task(void *arg){
+static void ctrl_task(void *arg){
   ctrl_task_action_t ctrl_action;
   tx_task_action_t tx_action;
   can_command_t command;
@@ -92,17 +92,21 @@ void ctrl_task(void *arg){
   for(;;){
     xSemaphoreTake(ctrl_task_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
     xQueueReceive(ctrl_task_queue, &ctrl_action, pdMS_TO_TICKS(10)); // Pull task from queue
-    xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
-    for(int i=0; i<sizeof(rx_payload); i++){
-      tx_payload[i] = rx_payload[i];
-    }
-    xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
-    command = tx_payload[2];
     switch(ctrl_action){
       case CTRL_HELLO:
+        xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
         xSemaphoreGive(rx_task_sem); // Allow rx_task to begin receiving CAN messages
-        tx_payload[0] = 0; // Prepare to ping with an empty response
+        tx_action = TX_PING;
+        xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
+        xSemaphoreGive(tx_task_sem);
+        ESP_LOGI(TAG, "Hello! Sent ping task to TX");
+        break;
       case CTRL_PING:
+        xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
+        for(int i=0; i<sizeof(rx_payload); i++){
+          tx_payload[i] = rx_payload[i];
+        }
+        xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
         if(!(tx_payload[0] & FLAG_PING)){ // If no ping flag, send empty response
           tx_action = TX_PING;
           xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
@@ -116,43 +120,86 @@ void ctrl_task(void *arg){
 
           // puzzle
           tx_payload[2] = (uint8_t)GAME_STATE;
-          tx_router();
+          ctrl_router();
 
           // gpio
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
           tx_payload[2] = (uint8_t)GPIO_STATE;
           xSemaphoreGive(tx_payload_sem);
-          tx_router();
+          ctrl_router();
 
           // shift_reg
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
-          tx_payload[2] = (uint8_t)SEND_PISO_STATES;
+          tx_payload[2] = (uint8_t)SHIFT_SIPO_STATE;
           xSemaphoreGive(tx_payload_sem);
-          tx_router();
-          
+          ctrl_router();
+
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
-          tx_payload[2] = (uint8_t)SEND_SIPO_STATES;
+          tx_payload[2] = (uint8_t)SHIFT_PISO_STATE;
           xSemaphoreGive(tx_payload_sem);
-          tx_router();
+          ctrl_router();
 
           // nfc
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
           tx_payload[2] = (uint8_t)NFC_SOF;
           xSemaphoreGive(tx_payload_sem);
-          tx_router();
+          ctrl_router();
         }
         break;
       case CTRL_CMD:
-        tx_router();
+        xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
+        for(int i=0; i<sizeof(rx_payload); i++){
+          tx_payload[i] = rx_payload[i];
+        }
+        xSemaphoreGive(rx_payload_sem); // Give control of rx_payload to rx_task
+        ctrl_router();
+        break;
+      case CTRL_SEND_PUZZLE: // Puzzle component sending state
+        tx_payload[0] = 0x02; // No flags, length = 2
+        tx_payload[1] = 0x00; // Send to master ID
+        command = GAME_STATE;
+        tx_payload[2] = (uint8_t)command;
+        ctrl_router();
+        break;
+      case CTRL_SEND_GPIO: // GPIO component sending state
+        tx_payload[0] = 0x02; // No flags, length = 2
+        tx_payload[1] = 0x00; // Send to master ID
+        command = GPIO_STATE;
+        tx_payload[2] = (uint8_t)command;
+        ctrl_router();
+        break;
+      case CTRL_SEND_SOUND: // Sound component never sends
+        break;
+      case CTRL_SEND_SHIFT_SIPO: // Shift_reg component sending SIPO state
+        tx_payload[0] = 0x02; // No flags, length = 2
+        tx_payload[1] = 0x00; // Send to master ID
+        command = SHIFT_SIPO_STATE;
+        tx_payload[2] = (uint8_t)command;
+        ctrl_router();
+        break;
+      case CTRL_SEND_SHIFT_PISO: // Shift_reg component sending PISO state
+        tx_payload[0] = 0x02; // No flags, length = 2
+        tx_payload[1] = 0x00; // Send to master ID
+        command = SHIFT_PISO_STATE;
+        tx_payload[2] = (uint8_t)command;
+        ctrl_router();
+        break;
+      case CTRL_SEND_NFC: // NFC component sending state
+        tx_payload[0] = 0x02; // No flags, length = 2
+        tx_payload[1] = 0x00; // Send to master ID
+        command = NFC_SOF;
+        tx_payload[2] = (uint8_t)command;
+        ctrl_router();
+        break;
     }
   }
 }
 
 static void rx_task(void *arg){
   static const char* TAG = "CAN_Rx";
-  static const char* type[8]= {"ALL_COMMAND","COMMAND","unused","unused","INHERIT","ALL_PING_REQ","PING_RESP","PING_REQ"};
+  static const char* type[8]= {"WRITE_ALL","WRITE","READ","unused","INHERIT","PING_REQ_ALL","PING_RES","PING_REQ"};
   uint8_t msg_id;
-  uint8_t msg_type;
+  rx_task_action_t msg_type;
   twai_message_t rx_msg;
   ctrl_task_action_t ctrl_action;
   xSemaphoreTake(rx_task_sem, portMAX_DELAY); // Blocked from beginning until ctrl_task gives semaphore
@@ -163,28 +210,47 @@ static void rx_task(void *arg){
     if (twai_receive(&rx_msg, pdMS_TO_TICKS(11000)) == ESP_OK) { // Wait for messages on CAN bus
       ESP_LOGI(TAG, "Received message...");
       rx_payload[1] = (uint8_t)(rx_msg.identifier & 0xFF);
-      msg_type = (uint8_t)(rx_msg.identifier >> 8);
+      msg_type = (rx_task_action_t)(rx_msg.identifier >> 8);
       ESP_LOGI(TAG, "From_ID: %d, Type: %s, To_ID: %d",rx_payload[1],type[msg_type],rx_msg.data[0]);
       switch(msg_type){
-        case 0: case 1: // Command
+        case RX_WRITE:
+          if(ID_PROP != rx_msg.data[0]) // Must be addressed to us
+            break;
+        case RX_WRITE_ALL: // Write command to ALL props
           ctrl_action = CTRL_CMD;
           xSemaphoreTake(rx_payload_sem, portMAX_DELAY); // Can only take if payload not being read by ctrl_task
+          rx_payload[0] = FLAG_WRITE | rx_msg.data_length_code;
           for(int i=1; i<rx_msg.data_length_code; i++){
             rx_payload[i+1] = rx_msg.data[i];
           }
           xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY);
           xSemaphoreGive(ctrl_task_sem);
           break;
-        case 5: case 7: // Ping request
-          ctrl_action = CTRL_PING;
-          rx_payload[0] = rx_msg.data[2] << 4;
+        case RX_READ: // Read command
+          if(ID_PROP != rx_msg.data[0]) // Must be addressed to us
+            break;
+          xSemaphoreTake(rx_payload_sem, portMAX_DELAY); // Can only take if payload not being read by ctrl_task
+          rx_payload[0] = rx_msg.data_length_code;
+          for(int i=1; i<rx_msg.data_length_code; i++){
+            rx_payload[i+1] = rx_msg.data[i];
+          }
           xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY);
           xSemaphoreGive(ctrl_task_sem);
           break;
-        case 6: // Ping response
+        case RX_PING_REQ: // Ping request
+          if(ID_PROP != rx_msg.data[0]) // Must be addressed to us
+            break;
+        case RX_PING_REQ_ALL: // Ping request to ALL props
+          ctrl_action = CTRL_PING;
+          rx_payload[0] = rx_msg.data[1] ? FLAG_PING : 0;
+          xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY);
+          xSemaphoreGive(ctrl_task_sem);
+          break;
+        case RX_PING_RES: // Ping response
           // Implement recording ping responses from other props in this case
           break;
         default: // Unknown command
+          ESP_LOGE(TAG, "Unknown command received from CAN bus");
       }
     } else {
       //ESP_LOGI(TAG, "No messages on the bus?");
@@ -204,7 +270,7 @@ static void tx_task(void *arg){
     switch(action){
       case TX_PING:
         tx_msg.identifier = (6 << 8) | ID_PROP;
-        tx_msg.data_length_code = 0;
+        tx_msg.data_length_code = 0; // No target or payload, therefore no length
         //Queue message for transmission
         if (twai_transmit(&tx_msg, portMAX_DELAY) == ESP_OK) {
           ESP_LOGI(TAG, "Transmitted ping response");
@@ -214,7 +280,7 @@ static void tx_task(void *arg){
         break;
       case TX_DATA:
         tx_msg.identifier = (6 << 8) | ID_PROP;
-        tx_msg.data_length_code = sizeof(tx_payload);
+        tx_msg.data_length_code = (tx_payload[0] & 0x0F) + 1; // +1 for Target_ID
         for(int i=0; i<tx_msg.data_length_code; i++){
           tx_msg.data[i] = tx_payload[i+1];
         }
@@ -232,15 +298,18 @@ static void tx_task(void *arg){
 }
 
 static void ctrl_router(){
+  tx_task_action_t tx_action;
   puzzle_task_action_t puzzle_action;
   gpio_task_action_t gpio_action;
   shift_task_action_t shift_action;
   nfc_task_action_t nfc_action;
   can_command_t command;
+  static const char* TAG = "CAN_Router";
   command = tx_payload[2];
+  tx_payload[0] -= 2; // Reduce payload length by 2 (ignore command, target)
   switch(command){
     case GAME_STATE: // Set/send the game state
-      puzzle_action = (tx_payload[0] >> 4) ? SET_STATE : SEND_STATE;
+      puzzle_action = (tx_payload[0] & FLAG_WRITE) ? SET_STATE : SEND_STATE;
       xQueueSend(puzzle_task_queue, &puzzle_action, portMAX_DELAY);
       xSemaphoreGive(puzzle_task_sem);
       ESP_LOGI(TAG, "Sent state to Puzzle");
@@ -252,7 +321,7 @@ static void ctrl_router(){
       ESP_LOGI(TAG, "Sent mask to GPIO");
       break;
     case GPIO_STATE: // GPIO states of pins to set/send
-      gpio_action = (tx_payload[0] >> 4) ? SET_GPIO_STATES : SEND_GPIO_STATES;
+      gpio_action = (tx_payload[0] & FLAG_WRITE) ? SET_GPIO_STATES : SEND_GPIO_STATES;
       xQueueSend(gpio_task_queue, &gpio_action, portMAX_DELAY);
       xSemaphoreGive(gpio_task_sem);
       ESP_LOGI(TAG, "Sent states to GPIO");
@@ -260,14 +329,21 @@ static void ctrl_router(){
     case SOUND: // Play music, write only
       xTaskNotify(sound_task_handle,tx_payload[3],eSetValueWithOverwrite);
       break;
-    case SHIFT_MASK: // Mask of shift register pins, write only
+    case SHIFT_SIPO_MASK: // Mask of shift register pins, write only
       shift_action = SET_SIPO_MASK;
       xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
       xSemaphoreGive(shift_task_sem);
       ESP_LOGI(TAG, "Sent mask to Shift Register");
       break;
-    case SHIFT_STATE: // States of shift register pins to set/send
-      shift_action = (tx_payload[0] >> 4) ? SET_SIPO_STATES : SEND_SIPO_STATES;
+    case SHIFT_SIPO_STATE: // States of shift SIPOs to set/send
+      shift_action = (tx_payload[0] & FLAG_WRITE) ? SET_SIPO_STATES : SEND_SIPO_STATES;
+      xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
+      xSemaphoreGive(shift_task_sem);
+      ESP_LOGI(TAG, "Sent states to Shift Register");
+      break;
+    case SHIFT_PISO_STATE: // States of shift PISOs, read only
+      tx_payload[0] &= !(FLAG_WRITE); // Force read
+      shift_action = SEND_PISO_STATES;
       xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
       xSemaphoreGive(shift_task_sem);
       ESP_LOGI(TAG, "Sent states to Shift Register");
@@ -283,6 +359,7 @@ static void ctrl_router(){
   }
   if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
     xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
+    tx_payload[0] += 2; // Increase payload length by 2 (add Command, Target_ID)
     tx_action = TX_DATA;
     xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
     xSemaphoreGive(tx_task_sem);

@@ -17,9 +17,9 @@
 #include "pn5180.h"
 
 //-------------Private Prototypes--------------//
-static void puzzle_task(void *arg);
-static bool CAN_Receive(uint32_t delay);
 static void puzzle_main(void *arg);
+static void puzzle_task(void *arg);
+static esp_err_t CAN_Receive(uint32_t delay);
 
 //---------External Global Variables-----------//
 
@@ -96,34 +96,45 @@ void puzzle_init(void){
 }
 
 static void puzzle_task(void *arg){
+  ctrl_task_action_t ctrl_action = CTRL_SEND_PUZZLE;
+  uint8_t game_state_old = game_state;
   while(1){
-    CAN_Receive(10);
+    if(game_state != game_state_old){                           // If game state changed...
+      game_state_old = game_state;                              // Record as last state
+      xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY); // Queue up to send game state on CAN bus
+    }
+    CAN_Receive(10);                                            // Check for tasks from CAN bus
   }
 }
 
-static bool CAN_Receive(uint32_t delay){
+static esp_err_t CAN_Receive(uint32_t delay){
   static const char* TAG = "Puzzle";
   puzzle_task_action_t puzzle_action;
-  if(xSemaphoreTake(puzzle_task_sem, pdMS_TO_TICKS(delay)) == pdTRUE){ // Blocked from executing until ctrl_task gives semaphore
+  if(xSemaphoreTake(puzzle_task_sem, pdMS_TO_TICKS(delay)) == pdTRUE){      // Blocked from executing until ctrl_task gives semaphore
     xQueueReceive(puzzle_task_queue, &puzzle_action, pdMS_TO_TICKS(delay)); // Pull task from queue
-    switch(puzzle_action){ // Received a forced state change from the CAN bus
-      case SET_STATE: // Change the game state
-        game_state = tx_payload[2];
-        if(tx_payload[0] & FLAG_RES){
-          xSemaphoreGive(ctrl_done_sem); // Give control of rx_payload to rx_task
+    switch(puzzle_action){               // Read command from the CAN bus
+      case SET_STATE:                    // Action: Set game state
+        game_state = tx_payload[3];
+        if(tx_payload[0] & FLAG_RES){    // If a response is requested...
+          xSemaphoreGive(ctrl_done_sem); // Inform ctrl_task data is ready
         }
+        ESP_LOGI(TAG, "Set game state");
         break;
-      case SEND_STATE:
-        tx_payload[0] &= 0xF0;
-        tx_payload[0] |= 0x01;                         // Read | Length = 1
-        tx_payload[2] = 0;                             // GAME_STATE
-        tx_payload[3] = game_state;                    // GAME_STATE payload
-        xSemaphoreGive(ctrl_done_sem);                 // Let ctrl_task know data is ready
+      case SEND_STATE:                   // Action: Send current game state
+        tx_payload[0] &= 0xF0;           // Preserve flags
+        tx_payload[0] |= 0x01;           // Length = 1
+        tx_payload[2] = 0;               // Command = GAME_STATE
+        tx_payload[3] = game_state;      // GAME_STATE payload
+        xSemaphoreGive(ctrl_done_sem);   // Inform ctrl_task data is ready
+        ESP_LOGI(TAG, "Sent game state");
         break;
+      default:
+        ESP_LOGE(TAG, "Unknown action received");
+        return ESP_ERR_INVALID_ARG;
     }
-    return 1;
+    return ESP_OK;
   }
   else{
-    return 0;
+    return ESP_ERR_TIMEOUT;
   }
 }
