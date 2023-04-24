@@ -21,16 +21,16 @@ TaskHandle_t shift_task_handle;
 SemaphoreHandle_t shift_task_sem;
 QueueHandle_t shift_task_queue;
 
-static uint8_t maskSIPO[NUM_SIPO]; // Mask applied to SIPO registers
-uint8_t sipoData[NUM_SIPO];        // Data sent to SIPO registers
-uint8_t pisoData[NUM_PISO];        // Data read from PISO registers
-uint8_t sipoData_old[NUM_SIPO];    // Last SIPO state
-uint8_t pisoData_old[NUM_PISO];    // Last PISO state
-
 static void piso_update(void);
 static void sipo_update(void);
 static void pulsePin(uint8_t pinName, uint32_t pulseTime);
 static void shift_task(void *arg);
+static uint8_t pisoData_old[NUM_PISO];    // Last PISO state
+static uint8_t sipoData_old[NUM_SIPO];    // Last SIPO state
+static uint8_t maskSIPO[NUM_SIPO]; // Mask applied to SIPO registers
+
+uint8_t pisoData[NUM_PISO];        // Data read from PISO registers
+uint8_t sipoData[NUM_SIPO];        // Data sent to SIPO registers
 
 void shift_init(void){
   uint64_t mask = 0;
@@ -187,6 +187,5 @@ static void shift_task(void *arg){
       }
     }
     piso_update();
-
   }
 }

@@ -40,8 +40,7 @@ typedef enum {
 typedef struct {
   uint8_t manufacturer;
   uint8_t type;
-  uint8_t uid[6];
-  uint8_t uid_raw[8];
+  uint8_t uid[8];
   uint8_t dsfid;
   uint8_t afi;
   uint8_t ic_ref;

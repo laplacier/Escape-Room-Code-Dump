@@ -14,7 +14,7 @@
 #define FLAG_WRITE 0x10 // Command is write
 #define FLAG_PING  0x20 // Ping response must contain all states
 #define FLAG_RES   0x40 // Control_Task requires ctrl_done_sem from component
-#define FLAG_TBD1  0x80
+#define FLAG_CONT  0x80 // Component has additional data to send
 
 // GPIO Pin assignments
 #define CAN_TX_GPIO                     32 // ESP32 Tx Pin to CAN Pin

@@ -49,6 +49,9 @@ extern SemaphoreHandle_t shift_task_sem;
 
 // nfc
 extern ISO15693NFC_t nfc; // Struct holding data from nfc tags
+extern QueueHandle_t nfc_task_queue;
+extern SemaphoreHandle_t nfc_task_sem;
+extern SemaphoreHandle_t nfc_cont_sem;
 
 // puzzle
 extern SemaphoreHandle_t puzzle_task_sem;
@@ -125,24 +128,20 @@ static void ctrl_task(void *arg){
           // gpio
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
           tx_payload[2] = (uint8_t)GPIO_STATE;
-          xSemaphoreGive(tx_payload_sem);
           ctrl_router();
 
           // shift_reg
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
           tx_payload[2] = (uint8_t)SHIFT_SIPO_STATE;
-          xSemaphoreGive(tx_payload_sem);
           ctrl_router();
 
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
           tx_payload[2] = (uint8_t)SHIFT_PISO_STATE;
-          xSemaphoreGive(tx_payload_sem);
           ctrl_router();
 
           // nfc
           xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
           tx_payload[2] = (uint8_t)NFC_SOF;
-          xSemaphoreGive(tx_payload_sem);
           ctrl_router();
         }
         break;
@@ -198,7 +197,6 @@ static void ctrl_task(void *arg){
 static void rx_task(void *arg){
   static const char* TAG = "CAN_Rx";
   static const char* type[8]= {"WRITE_ALL","WRITE","READ","unused","INHERIT","PING_REQ_ALL","PING_RES","PING_REQ"};
-  uint8_t msg_id;
   rx_task_action_t msg_type;
   twai_message_t rx_msg;
   ctrl_task_action_t ctrl_action;
@@ -214,8 +212,7 @@ static void rx_task(void *arg){
       ESP_LOGI(TAG, "From_ID: %d, Type: %s, To_ID: %d",rx_payload[1],type[msg_type],rx_msg.data[0]);
       switch(msg_type){
         case RX_WRITE:
-          if(ID_PROP != rx_msg.data[0]) // Must be addressed to us
-            break;
+          if(ID_PROP != rx_msg.data[0]) break; // Must be addressed to us
         case RX_WRITE_ALL: // Write command to ALL props
           ctrl_action = CTRL_CMD;
           xSemaphoreTake(rx_payload_sem, portMAX_DELAY); // Can only take if payload not being read by ctrl_task
@@ -238,8 +235,7 @@ static void rx_task(void *arg){
           xSemaphoreGive(ctrl_task_sem);
           break;
         case RX_PING_REQ: // Ping request
-          if(ID_PROP != rx_msg.data[0]) // Must be addressed to us
-            break;
+          if(ID_PROP != rx_msg.data[0]) break; // Must be addressed to us
         case RX_PING_REQ_ALL: // Ping request to ALL props
           ctrl_action = CTRL_PING;
           rx_payload[0] = rx_msg.data[1] ? FLAG_PING : 0;
@@ -280,7 +276,7 @@ static void tx_task(void *arg){
         break;
       case TX_DATA:
         tx_msg.identifier = (6 << 8) | ID_PROP;
-        tx_msg.data_length_code = (tx_payload[0] & 0x0F) + 1; // +1 for Target_ID
+        tx_msg.data_length_code = tx_payload[0] & 0x0F;
         for(int i=0; i<tx_msg.data_length_code; i++){
           tx_msg.data[i] = tx_payload[i+1];
         }
@@ -298,7 +294,7 @@ static void tx_task(void *arg){
 }
 
 static void ctrl_router(){
-  tx_task_action_t tx_action;
+  tx_task_action_t tx_action = TX_DATA;
   puzzle_task_action_t puzzle_action;
   gpio_task_action_t gpio_action;
   shift_task_action_t shift_action;
@@ -313,6 +309,12 @@ static void ctrl_router(){
       xQueueSend(puzzle_task_queue, &puzzle_action, portMAX_DELAY);
       xSemaphoreGive(puzzle_task_sem);
       ESP_LOGI(TAG, "Sent state to Puzzle");
+      if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
+        xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
+        tx_payload[0] += 2; // Increase payload length by 2 (add Command, Target_ID)
+        xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
+        xSemaphoreGive(tx_task_sem);
+      }
       break;
     case GPIO_MASK: // GPIO mask of pins, write only
       gpio_action = SET_GPIO_MASK;
@@ -325,6 +327,12 @@ static void ctrl_router(){
       xQueueSend(gpio_task_queue, &gpio_action, portMAX_DELAY);
       xSemaphoreGive(gpio_task_sem);
       ESP_LOGI(TAG, "Sent states to GPIO");
+      if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
+        xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
+        tx_payload[0] += 2; // Increase payload length by 2 (add Command, Target_ID)
+        xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
+        xSemaphoreGive(tx_task_sem);
+      }
       break;
     case SOUND: // Play music, write only
       xTaskNotify(sound_task_handle,tx_payload[3],eSetValueWithOverwrite);
@@ -340,29 +348,73 @@ static void ctrl_router(){
       xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
       xSemaphoreGive(shift_task_sem);
       ESP_LOGI(TAG, "Sent states to Shift Register");
+      if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
+        xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
+        tx_payload[0] += 2; // Increase payload length by 2 (add Command, Target_ID)
+        xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
+        xSemaphoreGive(tx_task_sem);
+      }
       break;
     case SHIFT_PISO_STATE: // States of shift PISOs, read only
-      tx_payload[0] &= !(FLAG_WRITE); // Force read
+      tx_payload[0] &= ~FLAG_WRITE; // Force read
       shift_action = SEND_PISO_STATES;
       xQueueSend(shift_task_queue, &shift_action, portMAX_DELAY);
       xSemaphoreGive(shift_task_sem);
       ESP_LOGI(TAG, "Sent states to Shift Register");
+      xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
+      tx_payload[0] += 2; // Increase payload length by 2 (add Command, Target_ID)
+      xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
+      xSemaphoreGive(tx_task_sem);
       break;
     case NFC_SOF: // NFC Write/Send SOF or Read request
+      nfc_action = (tx_payload[0] & FLAG_WRITE) ? NFC_WRITE_DATA : NFC_SEND_DATA;
+      xQueueSend(nfc_task_queue, &nfc_action, portMAX_DELAY);
+      xSemaphoreGive(nfc_task_sem);
+      ESP_LOGI(TAG, "Sent SOF to NFC");
+      if(nfc_action == NFC_SEND_DATA){
+        xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
+        if(nfc.uid[7] != 0xE0){
+          tx_payload[0] &= 0xF0;
+        }
+        else{
+          tx_payload[0] = 0; // Clear flags and length
+          uint16_t memSize = nfc.numBlocks * nfc.blockSize;
+          uint8_t numTxn = memSize / 6;
+          uint8_t txLength = 6;
+          if(memSize % 6) numTxn++;
+          for(int i=0; i<numTxn; i++){
+            if(i == 0) tx_payload[2] = 6; // First txn is SOF
+            if(i == numTxn - 1){ // Last txn?
+              if(i != 0) tx_payload[2] = 8; // If not first txn, is EOF
+              if(memSize % 6) txLength = memSize % 6; // If remainder, txlength is remainder
+            }
+            for(int j=0; j<txLength; j++){
+              tx_payload[i+3] = nfc.blockData[i*8 + j];
+            }
+            tx_payload[0] = txLength;
+            xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
+            xSemaphoreGive(tx_task_sem);
+            xSemaphoreTake(tx_payload_sem, portMAX_DELAY); // Blocked until tx_task is no longer reading tx_payload
+          }
+        }
+        xSemaphoreGive(tx_payload_sem); // Replace last semaphore take
+        xSemaphoreGive(nfc_cont_sem); // Allow nfc component to resume
+      }
       break;
-    case NFC_DATA: // NFC Write/Send continuation
+    case NFC_DATA: // NFC Write continuation
+      nfc_action = NFC_WRITE_DATA;
+      xQueueSend(nfc_task_queue, &nfc_action, portMAX_DELAY);
+      xSemaphoreGive(nfc_task_sem);
+      ESP_LOGI(TAG, "Sent Data to NFC");
       break;
-    case NFC_EOF: // NFC Write/Send EOF
+    case NFC_EOF: // NFC Write EOF
+      nfc_action = NFC_WRITE_DATA;
+      xQueueSend(nfc_task_queue, &nfc_action, portMAX_DELAY);
+      xSemaphoreGive(nfc_task_sem);
+      ESP_LOGI(TAG, "Sent EOF to NFC");
       break;
     default:
       ESP_LOGE(TAG, "Unknown command from CAN bus");
-  }
-  if( (tx_payload[0] & FLAG_RES) || !(tx_payload[0] & FLAG_WRITE) ){
-    xSemaphoreTake(ctrl_done_sem, portMAX_DELAY); // Blocked from executing until a task gives a semaphore
-    tx_payload[0] += 2; // Increase payload length by 2 (add Command, Target_ID)
-    tx_action = TX_DATA;
-    xQueueSend(tx_task_queue, &tx_action, portMAX_DELAY);
-    xSemaphoreGive(tx_task_sem);
   }
 }
 

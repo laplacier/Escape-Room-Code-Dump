@@ -39,17 +39,22 @@
   * GPIO 39 - OK, input only.
  */
 
-extern SemaphoreHandle_t puzzle_task_sem;
-extern QueueHandle_t puzzle_task_queue;
+// twai_can
+extern QueueHandle_t ctrl_task_queue;
+extern SemaphoreHandle_t ctrl_task_sem;
 extern SemaphoreHandle_t ctrl_done_sem;
-extern uint8_t tx_payload[8];
+extern uint8_t tx_payload[9];
 
 SemaphoreHandle_t gpio_task_sem;
 QueueHandle_t gpio_task_queue;
-uint64_t mask_protect = 0b1111111111111111111111110110000011110001000100000000111111001011; // Default DNU pins implemented
+
+static void gpio_update(void);
+static uint64_t gpio_states = 0;            // Initial state of pins
+static uint64_t gpio_states_old = 0;        // Previous state of pins
+static uint64_t mask_protect = 0b1111111111111111111111110110000011110001000100000000111111001011; // Default DNU pins implemented
+static const char* TAG = "GPIO";
 
 void GPIO_Init(void){
-  static const char* TAG = "GPIO";
   if(CONFIG_ENABLE_SOUND){
     ESP_LOGI(TAG, "Protecting sound pins");
     mask_protect |= 1ULL << UART_TX_GPIO;
@@ -80,8 +85,6 @@ void GPIO_Init(void){
 
 void gpio_task(void *arg){
   gpio_task_action_t gpio_action;
-  static const char* TAG = "GPIO";
-  uint64_t gpio_states = 0;            // Initial state of pins
   uint64_t gpio_mask = mask_protect; // Mask applied to select GPIO mins to modify
   while(1){
     if(xSemaphoreTake(gpio_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
@@ -117,14 +120,14 @@ void gpio_task(void *arg){
           for(int i=0; i<39; i++){ // Snapshot state of all GPIO pins
             bitWrite(gpio_states,i,gpio_get_level(i));
           }
-          tx_payload[1] = 1;
           for(int i=0; i<5; i++){
-            tx_payload[i+2] = READBYTE(gpio_states,i); // Transfer the current state byte to the CAN_TX payload
+            tx_payload[i+3] = READBYTE(gpio_states,i); // Transfer the current state byte to the CAN_TX payload
           }
           xSemaphoreGive(ctrl_done_sem);
           break;
       }
     }
+    gpio_update();
   }
 }
 
@@ -185,9 +188,25 @@ void gpio_mode(uint8_t pin, gpio_mode_wrapper_t mode, gpio_interrupt_t type){
 }
 
 bool gpio_read(uint8_t pin){
+  if(mask_protect & BIT(pin)){
+    ESP_LOGE(TAG, "Read protected: Pin is in use by another component");
+    return ESP_FAIL;
+  }
   return (gpio_get_level(pin));
 }
 
 esp_err_t gpio_write(uint8_t pin, bool level){
+  if(mask_protect & BIT(pin)){
+    ESP_LOGE(TAG, "Write protected: Pin is in use by another component");
+    return ESP_FAIL;
+  }
   return (gpio_set_level(pin, level));
+}
+
+static void gpio_update(void){
+  ctrl_task_action_t ctrl_action = CTRL_SEND_GPIO;
+  if(gpio_states != gpio_states_old){                         // If gpio state changed...
+    gpio_states = gpio_states_old;                            // Record as last state
+    xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY); // Queue up to send gpio states on CAN bus
+  }
 }

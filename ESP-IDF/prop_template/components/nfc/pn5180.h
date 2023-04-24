@@ -99,8 +99,8 @@ typedef enum {
 } PN5180TransceiveState_t;
 
 typedef enum {
-  WRITE_DATA,
-  SEND_DATA
+  NFC_WRITE_DATA,
+  NFC_SEND_DATA
 } nfc_task_action_t;
 
 extern const char manufacturerCode[110][100];

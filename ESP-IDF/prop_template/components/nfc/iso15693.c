@@ -77,7 +77,7 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t *nfc) {
 
   // Record raw UID data
   for (int i=0; i<8; i++) {
-    nfc->uid_raw[i] = readBuffer[2+i];
+    nfc->uid[i] = readBuffer[2+i];
   }
   /*
    * https://www.nxp.com/docs/en/data-sheet/SL2S2002_SL2S2102.pdf
@@ -94,15 +94,10 @@ ISO15693ErrorCode_t pn5180_getInventory(ISO15693NFC_t *nfc) {
    */
 
   // Record Manufacturer code
-  nfc->manufacturer = nfc->uid_raw[6];
+  nfc->manufacturer = nfc->uid[6];
 
   // Record IC type
-  nfc->type = nfc->uid_raw[5];
-
-  // Record unique 6 byte UID in LSBFIRST order
-  for(int i=2; i<8; i++){
-    nfc->uid[i-2] = nfc->uid_raw[7-i];
-  }
+  nfc->type = nfc->uid[5];
 
   ESP_LOGD(TAG,"getInventory: Response flags: 0x%X, Data Storage Format ID: 0x%X", readBuffer[0], readBuffer[1]);
 
@@ -373,7 +368,7 @@ ISO15693ErrorCode_t pn5180_readSingleBlock(ISO15693NFC_t *nfc, uint8_t blockNo) 
   //                                |\- high data rate
   //                                \-- no options, addressed by UID
   for (int i=0; i<8; i++) {
-    readSingleBlock[2+i] = nfc->uid_raw[i];
+    readSingleBlock[2+i] = nfc->uid[i];
   }
 
   ESP_LOGD(TAG,"readSingleBlock: Read Single Block #%d, size=%d: ", blockNo, nfc->blockSize);
@@ -434,7 +429,7 @@ ISO15693ErrorCode_t pn5180_writeSingleBlock(ISO15693NFC_t *nfc, uint8_t blockNo)
   writeCmd[pos++] = writeSingleBlock[0];
   writeCmd[pos++] = writeSingleBlock[1];
   for (int i=0; i<8; i++) {
-    writeCmd[pos++] = nfc->uid_raw[i];
+    writeCmd[pos++] = nfc->uid[i];
   }
   writeCmd[pos++] = blockNo;
   uint8_t startAddr = blockNo * nfc->blockSize;
@@ -497,7 +492,7 @@ ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t *nfc, uint8_t blockNo
   //                                |\- high data rate
   //                                \-- no options, addressed by UID
   for (int i=0; i<8; i++) {
-    readMultipleCmd[2+i] = nfc->uid_raw[i];
+    readMultipleCmd[2+i] = nfc->uid[i];
   }
 
   ESP_LOGD(TAG,"readMultipleBlock: Read Block #%d-%d, size=%d: ", blockNo, blockNo+numBlock-1, nfc->blockSize);
@@ -567,7 +562,7 @@ ISO15693ErrorCode_t pn5180_readMultipleBlock(ISO15693NFC_t *nfc, uint8_t blockNo
 ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t *nfc) {
   uint8_t sysInfo[] = { 0x22, 0x2b, 1,2,3,4,5,6,7,8 };  // UID has LSB first!
   for (int i=0; i<8; i++) {
-    sysInfo[2+i] = nfc->uid_raw[i];
+    sysInfo[2+i] = nfc->uid[i];
   }
 
   ESP_LOGD(TAG,"getSystemInfo: Get System Information");
@@ -580,7 +575,7 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t *nfc) {
   }
 
   for (int i=0; i<8; i++) {
-    nfc->uid_raw[i] = readBuffer[2+i];
+    nfc->uid[i] = readBuffer[2+i];
   }
 
   uint8_t *p = &readBuffer[10];

@@ -26,6 +26,7 @@
 #include "freertos/semphr.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "twai_can.h"
 #include "iso15693.h"
 #include "pn5180.h"
 
@@ -41,12 +42,15 @@ SemaphoreHandle_t nfc_task_sem;
 SemaphoreHandle_t nfc_cont_sem;
 QueueHandle_t nfc_task_queue;
 static const char *TAG = "pn5180.c";
+static uint8_t uid_old[8] = {0,0,0,0,0,0,0,0};
 
 ISO15693NFC_t nfc;
 uint8_t *writeBuffer = NULL;
 uint8_t readBuffer[508];
 
 //twai_can
+extern QueueHandle_t ctrl_task_queue;
+extern SemaphoreHandle_t ctrl_task_sem;
 extern SemaphoreHandle_t ctrl_done_sem;
 extern uint8_t tx_payload[9];
 
@@ -54,6 +58,7 @@ extern uint8_t tx_payload[9];
 // Private Prototypes //
 ////////////////////////
 static void nfc_task(void *arg);
+static void nfc_update(void);
 static esp_err_t pn5180_txn(spi_device_handle_t dev, const void *tx, int txLen, void *rx, int rxLen);
 static esp_err_t pn5180_busy_wait(uint32_t timeout);
 
@@ -128,11 +133,12 @@ static void nfc_task(void *arg){
 
   while(1){
     uint16_t memSize = nfc.numBlocks * nfc.blockSize;
+    uint8_t rxLength;
     if(xSemaphoreTake(nfc_task_sem, pdMS_TO_TICKS(10)) == pdTRUE){ // Blocked from executing until puzzle_task gives a semaphore
       xQueueReceive(nfc_task_queue, &nfc_action, portMAX_DELAY); // Pull task from queue
       switch(nfc_action){
-        case WRITE_DATA:
-          uint8_t rxLength = (tx_payload[0] & 0x0F) - 1;
+        case NFC_WRITE_DATA:
+          rxLength = tx_payload[0] & 0x0F;
           if(tx_payload[2] == 0x06){ // WRITE_DATA SOF
             if(writeBuffer != NULL){
               free(writeBuffer);
@@ -150,27 +156,9 @@ static void nfc_task(void *arg){
           }
           xSemaphoreGive(ctrl_done_sem); // Inform ctrl_task tx_payload is ready
           break;
-        case SEND_DATA:                                      // Command: Send states to CAN_TX payload
-          uint16_t numTxn = memSize / 6;
-          for(int i=0; i<numTxn; i++){
-            if(i == 0){
-              tx_payload[2] = 6; // SEND_DATA SOF
-            }
-            else if(i == numTxn - 1){
-              tx_payload[2] = 8; // SEND_DATA EOF
-            }
-            else{
-              tx_payload[2] = 7; // SEND_DATA
-            }
-            for(int j=0; j<6; j++){
-              tx_payload[j+3] = nfc.blockData[(i*6) + j]; // Transfer the NFC bytes to the CAN_TX payload
-            }
-            xSemaphoreGive(ctrl_done_sem); // Inform ctrl_task tx_payload is ready
-            if(xSemaphoreTake(nfc_cont_sem, pdMS_TO_TICKS(10000)) != ESP_OK){ // Wait for ctrl_task to process tx_payload with timeout
-              ESP_LOGE(TAG, "Timeout waiting to send data");
-              break;
-            }
-          }
+        case NFC_SEND_DATA:                // Command: Send states to CAN_TX payload
+          xSemaphoreGive(ctrl_done_sem); // Let ctrl_task begin reading NFC data
+          xSemaphoreTake(nfc_cont_sem, portMAX_DELAY); // ctrl_task is done with NFC data
           break;
       }
     }
@@ -192,6 +180,29 @@ static void nfc_task(void *arg){
         }
       }
     }
+    else{ // If no NFC tag read, clear data
+      for(int i=0; i<8; i++){
+        nfc.uid[0] = 0;
+      }
+      nfc.numBlocks = 0;
+      nfc.blockSize = 0;
+    }
+    nfc_update();
+  }
+}
+
+static void nfc_update(void){
+  ctrl_task_action_t ctrl_action = CTRL_SEND_NFC;
+  bool flag_send_CAN = 0;
+  for(int i=7; i>=0; i--){
+    if(nfc.uid[i] != uid_old[i]){
+      flag_send_CAN = 1;
+      uid_old[i] = nfc.uid[i];
+    }
+  }
+  if(flag_send_CAN){                                          // If nfc state changed...
+    flag_send_CAN = 0;
+    xQueueSend(ctrl_task_queue, &ctrl_action, portMAX_DELAY); // Queue up to send nfc data on CAN bus
   }
 }
 

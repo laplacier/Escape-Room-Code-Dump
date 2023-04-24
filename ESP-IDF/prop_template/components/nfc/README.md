@@ -8,35 +8,57 @@ Utilizes a pn5180 NFC reader from NXP to detect ISO15693 tags.
 This component can be configured by opening the ESP-IDF Configuration editor and navigating to "NFC Options".
 
 ## Configuration Options
+
+| Setting                                       | Type            | Default |
+|-----------------------------------------------|-----------------|---------|
+| [Enable NFC](#enable-nfc)                     | bool            | true    |
+| [Detect Multiple Tags](#detect-multiple-tags) | bool            | false   |
+
 ### Enable NFC
-TRUE by default. This will enable the NFC capabilities of the prop.
+This will enable the NFC capabilities of the prop.
 
 ### Detect multiple tags
-FALSE by default. Multiple NFC tags can be placed on top of the NFC reader and read if enabled. Returns one NFC tag if only one present when false.
+Multiple NFC tags can be placed on top of the NFC reader and read if enabled. Returns one NFC tag if only one present when false.
 
 ## API reference
-The following functions can be called to utilize this component:
+The following functions and global variables can be called to utilize this component:
 
-### CAN Messages
-```
+### ISO15693NFC_t nfc
+NFC struct containing all of the data from the detected NFC tag. 
 
-```
-### bool shift_read(uint8_t pin)
-Returns the value read from the specified pin on the input shift registers. Pins are specified in order from 0 *(reg#0, pinA)* to **NUM_SN74HC165n** - 1 *(reg#NUM_PISO, pinH)*.
-
-### void shift_write(uint8_t pin, bool val)
-Writes val to the specified pin on the output shift registers. Pins are specified in order from 0 *(reg#0, pinA)* to **NUM_SN74HC595n** - 1 *(reg#NUM_SIPO, pinH)*. Note that the changes will not be reflected until **shift_show()** is called.
-
-### void shift_show(void)
-Shows the changes on the output shift register pins written via **shift_write()**
+| Member       | Type | Description                                        |
+|--------------|------|----------------------------------------------------|
+| manufacturer | int  | The manufacturer of the tag                        |
+| type         | int  | The type of tag, as a subclass of the manufacturer |
+| uid[8]       | int  | Unique identifier of the tag                       |
+| dsfid        | int  | Data structure format identifier                   |
+| afi          | int  | Application family identifier                      |
+| ic_ref       | int  | IC specific information                            |
+| numBlocks    | int  | Number of programmable data blocks                 |
+| blockSize    | int  | Number of bytes in each programmable data block    |
+| blockData    | int* | Pointer to data from tag                           |
 
 ## Example usage:
 ```
-if(shift_read(12)){   // If input shift register 1, pin 4 is HIGH...
-    shift_write(3,1); // Write HIGH to output shift register 0, pin 3
+ISO15693NFC_t correct_nfc;
+// Fill struct with data for expected nfc...
+
+bool isMatch = 1;
+if(nfc.numBlock != nfc_correct.numBlock) isMatch = 0;
+if(nfc.blockSize != nfc_correct.blockSize) isMatch = 0;
+for(int i=0; i<nfc.numBlocks; i++){
+    if(!isMatch) break;
+    for(int j=0; j<nfc.blockSize; j++){
+        uint8_t nfc_byte = nfc.blockData[i*nfc.blockSize + j];
+        uint8_t correct_nfc_byte = nfc_correct.blockData[i*nfc.blockSize + j];
+        if(nfc_byte != correct_nfc_byte){
+            isMatch = 0;
+            break;
+        }
+    }
 }
-else{                 // Otherwise...
-    shift_write(3,0); // Write LOW to output shift register 0, pin 3
+
+if(isMatch){
+    // Do a thing for the correct match
 }
-shift_show();         // Show the state changes on output shift registers
 ```
