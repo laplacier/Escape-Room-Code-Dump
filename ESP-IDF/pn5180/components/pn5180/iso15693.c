@@ -610,10 +610,10 @@ ISO15693ErrorCode_t pn5180_getSystemInfo(ISO15693NFC_t *nfc) {
     nfc->numBlocks++;
     nfc->blockSize++;
 
-    ESP_LOGD(TAG, "getSystemInfo: VICC MemSize=%d BlockSize=%d NumBlocks=%d", nfc->blockSize * nfc->numBlocks, nfc->blockSize, nfc->numBlocks);
+    ESP_LOGI(TAG, "getSystemInfo: VICC MemSize=%d BlockSize=%d NumBlocks=%d", nfc->blockSize * nfc->numBlocks, nfc->blockSize, nfc->numBlocks);
     // Reallocate blockData
-    free(nfc->blockData);
-    nfc->blockData = (uint8_t*)malloc( (nfc->blockSize) * (nfc->numBlocks) );
+    //free(nfc->blockData);
+    if(nfc->blockData == NULL) nfc->blockData = (uint8_t*)malloc( (nfc->blockSize) * (nfc->numBlocks) );
     if(nfc->blockData == NULL) ESP_LOGE(TAG, "Failed to allocate heap for blockData");
   }
   else{

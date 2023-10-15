@@ -55,7 +55,7 @@ static uint64_t mask_protect = 0b11111111111111111111111101100000111100010001000
 static const char* TAG = "GPIO";
 
 void GPIO_Init(void){
-  if(CONFIG_ENABLE_SOUND){
+  /*if(CONFIG_ENABLE_SOUND){
     ESP_LOGI(TAG, "Protecting sound pins");
     mask_protect |= 1ULL << UART_TX_GPIO;
     mask_protect |= 1ULL << UART_RX_GPIO;
@@ -72,7 +72,7 @@ void GPIO_Init(void){
     mask_protect |= 1ULL << PISO_DATA_GPIO;
     mask_protect |= 1ULL << SIPO_LATCH_GPIO;
     mask_protect |= 1ULL << SIPO_DATA_GPIO;
-  }
+  }*/
 
   gpio_task_queue = xQueueCreate(10, sizeof(gpio_task_action_t));
   gpio_task_sem = xSemaphoreCreateCounting( 10, 0 ); 

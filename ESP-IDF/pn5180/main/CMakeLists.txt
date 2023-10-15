@@ -1,2 +1,2 @@
-idf_component_register(SRCS "inventoryMultiple.c" "readData.c"
+idf_component_register(SRCS "readData.c"
                     INCLUDE_DIRS ".")

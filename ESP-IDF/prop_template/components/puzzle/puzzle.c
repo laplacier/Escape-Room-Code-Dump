@@ -37,10 +37,10 @@ extern QueueHandle_t gpio_task_queue;
 extern SemaphoreHandle_t gpio_task_sem;
 
 //shift_reg
-extern uint8_t pisoData[NUM_PISO];
-extern uint8_t sipoData[NUM_SIPO];
-extern QueueHandle_t shift_task_queue;
-extern SemaphoreHandle_t shift_task_sem;
+//extern uint8_t pisoData[NUM_PISO];
+//extern uint8_t sipoData[NUM_SIPO];
+//extern QueueHandle_t shift_task_queue;
+//extern SemaphoreHandle_t shift_task_sem;
 
 //nfc
 extern ISO15693NFC_t nfc; // Struct holding data from nfc tags
@@ -49,7 +49,7 @@ extern ISO15693NFC_t nfc; // Struct holding data from nfc tags
 SemaphoreHandle_t puzzle_task_sem;
 QueueHandle_t puzzle_task_queue;
 uint8_t game_state = 0;
-uint8_t piso_old[NUM_PISO];
+//uint8_t piso_old[NUM_PISO];
 
 /*
  *

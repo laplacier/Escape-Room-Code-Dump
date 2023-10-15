@@ -60,7 +60,7 @@
 #define DEBUG true                             // Prints debug information to serial if true
 #define DFMINI_TX 10                           // TX pin of the DFMini. Connects to microcontroller RX pin.
 #define DFMINI_RX 11                           // RX pin of the DFMini. Connects to microcontroller TX pin.
-#define DFMINI_VOLUME 5                        // Software configurable volume. Max volume = 30.
+#define DFMINI_VOLUME 20                        // Software configurable volume. Max volume = 30.
 SoftwareSerial DFMini(DFMINI_TX, DFMINI_RX);   // Declare a serial object named DFMini and pass the serial pins
 
 /*
@@ -190,6 +190,7 @@ void setup() {
   DFMini.begin(9600);                    // Begin serial communication with DFMini Player at the required 9600 baud
   delay(1000);                           // Allow DFMini Player time to detect serial. Clones depend on a delay.
   sendAudioCommand(0x0D,0);              // Send command 0x0D (Enable DFMini Player) and no parameter required
+  sendAudioCommand(0x09,0);
   sendAudioCommand(0x07,0);              // Send command 0x07 (Set EQ) and parameter 0x00 (Normal EQ)
   sendAudioCommand(0x06, DFMINI_VOLUME); // Send command 0x06 (Set Volume) and parameter DFMINI_VOLUME (defined)
 }
@@ -197,6 +198,6 @@ void setup() {
 void loop() {
   playTrack(1); // Play 0001.mp3
   delay(5000);  // Allow 0001.mp3 to play for a bit
-  playTrack(2); // Play 0002.mp3
-  delay(5000);  // Allow 0002.mp3 to play for a bit
+  //playTrack(2); // Play 0002.mp3
+  //delay(5000);  // Allow 0002.mp3 to play for a bit
 }
