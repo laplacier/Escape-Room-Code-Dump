@@ -1,0 +1,928 @@
+[
+    {
+        "id": "d7a168cae347d01e",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "8e24a7677bd19f27",
+        "type": "mqtt in",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "topic": "home/#",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "a75b325d310281c4",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 330,
+        "y": 320,
+        "wires": [
+            [
+                "b07d2f55f9f111b9",
+                "fd1d5b19d6034502"
+            ]
+        ]
+    },
+    {
+        "id": "b07d2f55f9f111b9",
+        "type": "switch",
+        "z": "d7a168cae347d01e",
+        "name": "MQTT Inbound Router",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "home/location/device/will",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "home/location/device/state",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "home/location/device/sensor1/state",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "home/location/device/sensor2/state",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 4,
+        "x": 560,
+        "y": 320,
+        "wires": [
+            [
+                "c30822e9819efa85",
+                "4825ccad8e98ea6a"
+            ],
+            [
+                "41ae49a846ceb397"
+            ],
+            [
+                "860e611237c6ade7"
+            ],
+            [
+                "aca37c7a929de66c"
+            ]
+        ]
+    },
+    {
+        "id": "a80401fe907268c5",
+        "type": "ui_text",
+        "z": "d7a168cae347d01e",
+        "group": "cbad0d2f1b480191",
+        "order": 5,
+        "width": 3,
+        "height": 1,
+        "name": "Game State",
+        "label": " ",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#000000",
+        "x": 1030,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "4fa00384becde8da",
+        "type": "inject",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "0",
+        "payloadType": "num",
+        "x": 270,
+        "y": 680,
+        "wires": [
+            [
+                "8b995a0896de5c64"
+            ]
+        ]
+    },
+    {
+        "id": "fd1d5b19d6034502",
+        "type": "debug",
+        "z": "d7a168cae347d01e",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 280,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "8b995a0896de5c64",
+        "type": "mqtt out",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "topic": "home/location/device/set",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "a75b325d310281c4",
+        "x": 550,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "eb4768a7dfb85d9f",
+        "type": "inject",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "99",
+        "payloadType": "num",
+        "x": 270,
+        "y": 720,
+        "wires": [
+            [
+                "8b995a0896de5c64"
+            ]
+        ]
+    },
+    {
+        "id": "c30822e9819efa85",
+        "type": "ui_led",
+        "z": "d7a168cae347d01e",
+        "order": 2,
+        "group": "cbad0d2f1b480191",
+        "width": 3,
+        "height": 1,
+        "label": "Connection",
+        "labelPlacement": "right",
+        "labelAlignment": "left",
+        "colorForValue": [
+            {
+                "color": "#ff0000",
+                "value": "offline",
+                "valueType": "str"
+            },
+            {
+                "color": "#008000",
+                "value": "online",
+                "valueType": "str"
+            }
+        ],
+        "allowColorForValueInMessage": false,
+        "shape": "circle",
+        "showGlow": true,
+        "name": "Online LED",
+        "x": 810,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "41ae49a846ceb397",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "State Handler",
+        "func": "if(msg.payload == 99) {\n    msg.payload = \"Solved\";\n    msg.icon = \"fa-check\";\n    msg.background = \"green\";\n}\nelse if(msg.payload == 1){\n    msg.payload = \"Ready\";\n    msg.icon = \"fa-times\"\n    msg.background = \"red\";\n}\nelse if(msg.payload == 0){\n    msg.payload = \"Resetting...\";\n    msg.icon = \"fa-times\"\n    msg.background = \"red\";\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 300,
+        "wires": [
+            [
+                "a80401fe907268c5",
+                "d8b6ade445f81717"
+            ]
+        ]
+    },
+    {
+        "id": "d8b6ade445f81717",
+        "type": "ui_led",
+        "z": "d7a168cae347d01e",
+        "order": 4,
+        "group": "cbad0d2f1b480191",
+        "width": 3,
+        "height": 1,
+        "label": "Game State",
+        "labelPlacement": "right",
+        "labelAlignment": "left",
+        "colorForValue": [
+            {
+                "color": "#008000",
+                "value": "Solved",
+                "valueType": "str"
+            },
+            {
+                "color": "#ffa500",
+                "value": "Ready",
+                "valueType": "str"
+            },
+            {
+                "color": "#ff0000",
+                "value": "Resetting...",
+                "valueType": "str"
+            }
+        ],
+        "allowColorForValueInMessage": false,
+        "shape": "circle",
+        "showGlow": true,
+        "name": "Game LED",
+        "x": 1030,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "274c6f91a3412cf4",
+        "type": "ui_template",
+        "z": "d7a168cae347d01e",
+        "group": "cbad0d2f1b480191",
+        "name": "Label CSS",
+        "order": 8,
+        "width": 0,
+        "height": 0,
+        "format": "<style>\n    .puzzleHeader {\n        font-size: 25px;\n    }\n</style>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "global",
+        "className": "",
+        "x": 710,
+        "y": 840,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "5c2e298855a6e812",
+        "type": "ui_text",
+        "z": "d7a168cae347d01e",
+        "group": "cbad0d2f1b480191",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "Title",
+        "label": "",
+        "format": "Puzzle1",
+        "layout": "row-center",
+        "className": "puzzleHeader",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#000000",
+        "x": 790,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "4825ccad8e98ea6a",
+        "type": "ui_text",
+        "z": "d7a168cae347d01e",
+        "group": "cbad0d2f1b480191",
+        "order": 3,
+        "width": 3,
+        "height": 1,
+        "name": "Online State",
+        "label": " ",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#000000",
+        "x": 810,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "860e611237c6ade7",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "Sensor1 Handler",
+        "func": "if(msg.payload == true) {\n    msg.payload = true;\n    msg.icon = \"fa-check\";\n    msg.background = \"green\";\n}\nelse if(msg.payload == false){\n    msg.payload = false;\n    msg.icon = \"fa-times\"\n    msg.background = \"red\";\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 830,
+        "y": 340,
+        "wires": [
+            [
+                "e603871676169173"
+            ]
+        ]
+    },
+    {
+        "id": "aca37c7a929de66c",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "Sensor2 Handler",
+        "func": "if(msg.payload == true) {\n    msg.payload = true;\n    msg.icon = \"fa-check\";\n    msg.background = \"green\";\n}\nelse if(msg.payload == false){\n    msg.payload = false;\n    msg.icon = \"fa-times\"\n    msg.background = \"red\";\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 830,
+        "y": 380,
+        "wires": [
+            [
+                "f6b307816bd518a6"
+            ]
+        ]
+    },
+    {
+        "id": "e603871676169173",
+        "type": "ui_text",
+        "z": "d7a168cae347d01e",
+        "group": "cbad0d2f1b480191",
+        "order": 6,
+        "width": 0,
+        "height": 0,
+        "name": "Sensor1",
+        "label": "Sensor1<i class=\"fa {{msg.icon}}\" aria-hidden=\"true\"></i>",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#000000",
+        "x": 1020,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "f6b307816bd518a6",
+        "type": "ui_text",
+        "z": "d7a168cae347d01e",
+        "group": "cbad0d2f1b480191",
+        "order": 7,
+        "width": 0,
+        "height": 0,
+        "name": "Sensor2",
+        "label": "Sensor2<i class=\"fa {{msg.icon}}\" aria-hidden=\"true\"></i>",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#000000",
+        "x": 1020,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "132375a9899b0966",
+        "type": "inject",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "true",
+        "payloadType": "bool",
+        "x": 270,
+        "y": 780,
+        "wires": [
+            [
+                "4674a42414ef147c"
+            ]
+        ]
+    },
+    {
+        "id": "4674a42414ef147c",
+        "type": "mqtt out",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "topic": "home/location/device/sensor1/state",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "a75b325d310281c4",
+        "x": 580,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "d270c8e92178baa1",
+        "type": "inject",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "false",
+        "payloadType": "bool",
+        "x": 270,
+        "y": 820,
+        "wires": [
+            [
+                "4674a42414ef147c"
+            ]
+        ]
+    },
+    {
+        "id": "c78e9164b7766e1e",
+        "type": "ui_button",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "cbad0d2f1b480191",
+        "order": 11,
+        "width": 2,
+        "height": 1,
+        "passthru": false,
+        "label": "Reset",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "red",
+        "className": "",
+        "icon": "",
+        "payload": "0",
+        "payloadType": "num",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 790,
+        "y": 500,
+        "wires": [
+            [
+                "1045b2cbdde07412"
+            ]
+        ]
+    },
+    {
+        "id": "5cbe82b6acbe0910",
+        "type": "ui_button",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "cbad0d2f1b480191",
+        "order": 9,
+        "width": 2,
+        "height": 1,
+        "passthru": false,
+        "label": "Solve",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "green",
+        "className": "",
+        "icon": "",
+        "payload": "99",
+        "payloadType": "num",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 790,
+        "y": 420,
+        "wires": [
+            [
+                "1045b2cbdde07412"
+            ]
+        ]
+    },
+    {
+        "id": "7b4495ab26da85af",
+        "type": "ui_button",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "cbad0d2f1b480191",
+        "order": 10,
+        "width": 2,
+        "height": 1,
+        "passthru": false,
+        "label": "Ready",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "orange",
+        "className": "",
+        "icon": "",
+        "payload": "1",
+        "payloadType": "num",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 790,
+        "y": 460,
+        "wires": [
+            [
+                "1045b2cbdde07412"
+            ]
+        ]
+    },
+    {
+        "id": "1045b2cbdde07412",
+        "type": "mqtt out",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "topic": "home/location/device/set",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "a75b325d310281c4",
+        "x": 1070,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "ef760f38d83c7ff1",
+        "type": "ui_button",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "39df058bc7d0bb3f",
+        "order": 7,
+        "width": 2,
+        "height": 1,
+        "passthru": false,
+        "label": "Start",
+        "tooltip": "",
+        "color": "white",
+        "bgcolor": "green",
+        "className": "",
+        "icon": "fa-play",
+        "payload": "true",
+        "payloadType": "bool",
+        "topic": "button",
+        "topicType": "str",
+        "x": 130,
+        "y": 60,
+        "wires": [
+            [
+                "931f6572be5ceba8"
+            ]
+        ]
+    },
+    {
+        "id": "6bc84583faf39851",
+        "type": "ui_button",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "39df058bc7d0bb3f",
+        "order": 8,
+        "width": 2,
+        "height": 1,
+        "passthru": false,
+        "label": "Pause",
+        "tooltip": "",
+        "color": "white",
+        "bgcolor": "orange",
+        "className": "",
+        "icon": "fa-pause",
+        "payload": "PAUSE",
+        "payloadType": "str",
+        "topic": "control",
+        "topicType": "str",
+        "x": 690,
+        "y": 80,
+        "wires": [
+            [
+                "c413b529d7d8ebab"
+            ]
+        ]
+    },
+    {
+        "id": "df66a6eedc04c33b",
+        "type": "ui_digital_clock",
+        "z": "d7a168cae347d01e",
+        "name": "DisplayedTime",
+        "group": "39df058bc7d0bb3f",
+        "order": 6,
+        "width": 0,
+        "height": 0,
+        "x": 1300,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "7bcf12275a140bbd",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "Hack Timestamp",
+        "func": "msg.payload = 3600000*5 + parseInt(msg.payload)*1000;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1090,
+        "y": 120,
+        "wires": [
+            [
+                "df66a6eedc04c33b"
+            ]
+        ]
+    },
+    {
+        "id": "24b1cb2e07011b96",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "Countdown State",
+        "func": "var state = parseInt(msg.payload);\nif (state > 0) {\n    if (msg.payload.slice(msg.payload.length - 6) == \"paused\") {\n        msg.payload = \"paused\";\n    }\n    else{\n        msg.payload = \"running\";\n    }\n}\nelse {\n    msg.payload = \"stopped\";\n}\nmsg.topic = \"state\";\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1090,
+        "y": 60,
+        "wires": [
+            [
+                "35aa2d46f8442053"
+            ]
+        ]
+    },
+    {
+        "id": "35aa2d46f8442053",
+        "type": "link out",
+        "z": "d7a168cae347d01e",
+        "name": "Clock1 state",
+        "mode": "link",
+        "links": [
+            "fd6bb55df409b5f6"
+        ],
+        "x": 1235,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "fd6bb55df409b5f6",
+        "type": "link in",
+        "z": "d7a168cae347d01e",
+        "name": "link in 6",
+        "links": [
+            "35aa2d46f8442053"
+        ],
+        "x": 365,
+        "y": 20,
+        "wires": [
+            [
+                "ad09643ee15216e3"
+            ]
+        ]
+    },
+    {
+        "id": "ad09643ee15216e3",
+        "type": "join",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "mode": "custom",
+        "build": "object",
+        "property": "payload",
+        "propertyType": "msg",
+        "key": "topic",
+        "joiner": "\\n",
+        "joinerType": "str",
+        "accumulate": false,
+        "timeout": "",
+        "count": "2",
+        "reduceRight": false,
+        "reduceExp": "",
+        "reduceInit": "",
+        "reduceInitType": "",
+        "reduceFixup": "",
+        "x": 470,
+        "y": 40,
+        "wires": [
+            [
+                "e177f4df61de1f1a"
+            ]
+        ]
+    },
+    {
+        "id": "e177f4df61de1f1a",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "Start button logic",
+        "func": "if(msg.payload.state == \"paused\"){\n    msg.topic = \"control\"\n    msg.payload = \"PAUSE\"\n    return msg;\n}\nelse if(msg.payload.state == \"stopped\" || msg.payload.state != \"running\"){\n    msg.payload = true\n    return msg;\n}\nelse{\n    return null;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 40,
+        "wires": [
+            [
+                "c413b529d7d8ebab"
+            ]
+        ]
+    },
+    {
+        "id": "931f6572be5ceba8",
+        "type": "function",
+        "z": "d7a168cae347d01e",
+        "name": "Trigger msg join",
+        "func": "msg.complete = true;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 300,
+        "y": 60,
+        "wires": [
+            [
+                "ad09643ee15216e3"
+            ]
+        ]
+    },
+    {
+        "id": "c413b529d7d8ebab",
+        "type": "countdown",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "topic": "",
+        "payloadTimerStart": "true",
+        "payloadTimerStartType": "bool",
+        "payloadTimerStop": "false",
+        "payloadTimerStopType": "bool",
+        "timer": "3600",
+        "resetWhileRunning": false,
+        "setTimeToNewWhileRunning": true,
+        "startCountdownOnControlMessage": false,
+        "minuteCounter": false,
+        "x": 890,
+        "y": 100,
+        "wires": [
+            [],
+            [
+                "7bcf12275a140bbd",
+                "24b1cb2e07011b96"
+            ]
+        ]
+    },
+    {
+        "id": "5d350d681ec96380",
+        "type": "ui_button",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "39df058bc7d0bb3f",
+        "order": 9,
+        "width": 2,
+        "height": 1,
+        "passthru": false,
+        "label": "Reset",
+        "tooltip": "",
+        "color": "white",
+        "bgcolor": "red",
+        "className": "",
+        "icon": "fa-rotate-right",
+        "payload": "false",
+        "payloadType": "bool",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 510,
+        "y": 120,
+        "wires": [
+            [
+                "4c0fc8f3d1e46cc2"
+            ]
+        ]
+    },
+    {
+        "id": "4c0fc8f3d1e46cc2",
+        "type": "ui_are_you_sure",
+        "z": "d7a168cae347d01e",
+        "name": "",
+        "group": "39df058bc7d0bb3f",
+        "iconColor": "#ffcc00",
+        "textColor": "#ffffff",
+        "backgroundColor": "#000000",
+        "icon": "fa fa-exclamation-triangle",
+        "title": "Reset timer?",
+        "description": "The timer will revert back to an hour and pause...",
+        "timeoutSec": 10,
+        "x": 660,
+        "y": 120,
+        "wires": [
+            [
+                "c413b529d7d8ebab"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "a75b325d310281c4",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "127.0.0.1",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "cbad0d2f1b480191",
+        "type": "ui_group",
+        "name": "Puzzle",
+        "tab": "a1bbe0ba8ca2af57",
+        "order": 2,
+        "disp": false,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "39df058bc7d0bb3f",
+        "type": "ui_group",
+        "name": "Game Timer",
+        "tab": "a1bbe0ba8ca2af57",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "a1bbe0ba8ca2af57",
+        "type": "ui_tab",
+        "name": "Home",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    }
+]

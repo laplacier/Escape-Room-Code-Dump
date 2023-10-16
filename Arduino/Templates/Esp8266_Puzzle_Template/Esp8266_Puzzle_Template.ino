@@ -27,17 +27,6 @@
    To support ESP32, use ESP_DoubleResetDetector library from //https://github.com/khoih-prog/ESP_DoubleResetDetector
  *****************************************************************************************************************************/
 
-#if !( defined(ESP8266) )
-  #error This code is intended to run on the (ESP8266 + W5500) platform! Please check your Tools->Board setting.
-#endif
-
-// Use from 0 to 4. Higher number, more debugging messages and memory usage.
-#define _ESPASYNC_ETH_MGR_LOGLEVEL_    4
-
-// To not display stored SSIDs and PWDs on Config Portal, select false. Default is true
-// Even the stored Credentials are not display, just leave them all blank to reconnect and reuse the stored Credentials
-//#define DISPLAY_STORED_CREDENTIALS_IN_CP        false
-
 //////////////////////////////////////////////////////////////
 // Using GPIO4, GPIO16, or GPIO5
 #define CSPIN             16
@@ -47,6 +36,11 @@
 #define MQTT_PASSWORD "laplacier"
 #define MQTT_WILL_TOPIC "home/location/device/will"
 #define NUM_PUZZLES 1
+#define RESET_DELAY 10 // seconds
+
+#define PUZZLE_SOLVED "99"
+#define PUZZLE_READY "1"
+#define PUZZLE_RESET "0"
 
 const char *sub_topic[] = {
   "home/location/device/set",
@@ -64,6 +58,7 @@ const char *input_topic[] = {
 const char *set_message[]{
   "Puzzle forced open",
   "Puzzle forced closed",
+  "Puzzle forced to reset",
 };
 
 const char *state_message[]{
@@ -71,6 +66,17 @@ const char *state_message[]{
   "Puzzle unsolved, box closed",
 };
 //////////////////////////////////////////////////////////
+
+#if !( defined(ESP8266) )
+  #error This code is intended to run on the (ESP8266 + W5500) platform! Please check your Tools->Board setting.
+#endif
+
+// Use from 0 to 4. Higher number, more debugging messages and memory usage.
+#define _ESPASYNC_ETH_MGR_LOGLEVEL_    4
+
+// To not display stored SSIDs and PWDs on Config Portal, select false. Default is true
+// Even the stored Credentials are not display, just leave them all blank to reconnect and reuse the stored Credentials
+//#define DISPLAY_STORED_CREDENTIALS_IN_CP        false
 
 #include <FS.h>
 
@@ -82,13 +88,19 @@ const char *state_message[]{
 
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
+Ticker puzzleResetRoutine;
 bool flag_mqtt_online = true;
-bool isSolved[NUM_PUZZLES];
+uint8_t game_state[NUM_PUZZLES];
 bool flag_solved[NUM_PUZZLES];
+bool flag_reset = false;
+uint8_t resetCounter = 0;
 
 void puzzle_init(void);
 void checkSolution(void);
 void puzzle_loop(void);
+void reset_loop(void);
+void resetCountdown(void);
+void resumeGame(void);
 
 const char *disconnectReason[]{
   "TCP Disconnected",
@@ -538,8 +550,24 @@ void connectToMqtt() {
 void onMqttConnect(bool sessionPresent) {
   Serial.println("Connected to MQTT.");
   for(int i=0; i<NUM_PUZZLES; i++){
+    // Subscribe
     mqttClient.subscribe(sub_topic[i], 2);
+
+    // Publish game state
+    String a = String(game_state[i]);
+    if(game_state[i] < 10){
+      char message[1];
+      a.toCharArray(message, 2);
+      mqttClient.publish(state_topic[i], 1, true, message);
+    }
+    else{
+      char message[2];
+      a.toCharArray(message, 3); 
+      mqttClient.publish(state_topic[i], 1, true, message);
+    }
   }
+
+  // Update last will
   mqttClient.publish(MQTT_WILL_TOPIC, 1, true, "online");
 }
 
@@ -567,20 +595,60 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   Serial.print("Message received: ");
   Serial.println(message);
   for(int i=0; i<NUM_PUZZLES; i++){
-    if(strTopic == sub_topic[i] && message == "true"){
-      mqttClient.publish(state_topic[i], 1, true, "true");
+    if(strTopic == sub_topic[i] && message == PUZZLE_SOLVED){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_SOLVED);
       Serial.println(set_message[0]);
-      isSolved[i] = true;
+      game_state[i] = atoi(PUZZLE_SOLVED);
+      flag_reset = false;
+      puzzleResetRoutine.detach();
     }
-    else if(strTopic == sub_topic[i] && message == "false"){
-      mqttClient.publish(state_topic[i], 1, true, "false");
+    else if(strTopic == sub_topic[i] && message == PUZZLE_READY){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_READY);
       Serial.println(set_message[1]);
-      isSolved[i] = false;
+      game_state[i] = atoi(PUZZLE_READY);
+      flag_reset = false;
+      puzzleResetRoutine.detach();
     }
+  }
+  if(message == PUZZLE_RESET){
+    for(int i=0; i<NUM_PUZZLES; i++){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_RESET);
+      game_state[i] = atoi(PUZZLE_RESET);
+    }
+    Serial.println(set_message[2]);
+    flag_reset = true;
+    resetCounter = RESET_DELAY;
+    puzzleResetRoutine.detach();
+    puzzleResetRoutine.attach(1, resetCountdown);
   }
 }
 
 void onMqttPublish(uint16_t packetId) {
+}
+
+void resetCountdown(void){
+  if(resetCounter <= 0){
+    Serial.println("Reset complete!");
+    flag_reset = false;
+    puzzleResetRoutine.detach();
+    for(int i=0; i<NUM_PUZZLES; i++){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_READY);
+    }
+    resumeGame();
+  }
+  else{
+    Serial.print("Resuming in ");
+    Serial.print(resetCounter);
+    Serial.println("...");
+    resetCounter--;
+  }
+}
+
+void resumeGame(void){
+  flag_reset = false;
+  for(int i=0; i<NUM_PUZZLES; i++){
+    game_state[i] = atoi(PUZZLE_READY);
+  }
 }
 
 void setup()
@@ -591,7 +659,7 @@ void setup()
 
   puzzle_init();
   for(int i=0; i<NUM_PUZZLES; i++){
-    isSolved[i] = false;
+    game_state[i] = 1;
     flag_solved[i] = false;
   }
 
@@ -867,5 +935,10 @@ void loop()
 
   // put your main code here, to run repeatedly
   check_status();
-  puzzle_loop();
+  if(!flag_reset){
+    puzzle_loop();
+  }
+  else{
+    reset_loop();
+  }
 }
