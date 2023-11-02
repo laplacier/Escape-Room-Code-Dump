@@ -36,7 +36,7 @@
 #define MQTT_PASSWORD "laplacier"
 #define MQTT_WILL_TOPIC "home/location/device/will"
 #define NUM_PUZZLES 1
-#define NUM_SENSORS 12
+#define NUM_SENSORS 2
 #define RESET_DELAY 10 // seconds
 
 #define PUZZLE_SOLVED "99"
@@ -44,7 +44,7 @@
 #define PUZZLE_RESET "0"
 
 const char *sub_topic[] = {
-  "home/location/device/set/#",
+  "home/location/device/set",
 };
 
 const char *state_topic[] = {
@@ -54,16 +54,6 @@ const char *state_topic[] = {
 const char *input_topic[] = {
   "home/location/device/sensor1/state",
   "home/location/device/sensor2/state",
-  "home/location/device/sensor3/state",
-  "home/location/device/sensor4/state",
-  "home/location/device/sensor5/state",
-  "home/location/device/sensor6/state",
-  "home/location/device/sensor7/state",
-  "home/location/device/sensor8/state",
-  "home/location/device/sensor9/state",
-  "home/location/device/sensor10/state",
-  "home/location/device/sensor11/state",
-  "home/location/device/sensor12/state"
 };
 
 const char *set_message[]{
@@ -96,38 +86,16 @@ const char *state_message[]{
 #include <ESPAsyncDNSServer.h>
 #include <Ticker.h>
 #include <AsyncMqttClient.h>
-#include <Wire.h>
-#include <I2C_Anything.h>
-#include <U8x8lib.h>
-
-#define SDA_PIN 4
-#define SCL_PIN 5
-#define I2C_MASTER 0x42
-#define I2C_SLAVE 0x08
 
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
 Ticker puzzleResetRoutine;
-Ticker statusTimer;
-U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(/* clock=*/ D1, /* data=*/ D2, /* reset=*/ U8X8_PIN_NONE);
 bool flag_mqtt_online = true;
+uint8_t game_state[NUM_PUZZLES];
 uint16_t last_sensor_state[NUM_SENSORS];
 bool flag_solved[NUM_PUZZLES];
 bool flag_reset = false;
 uint8_t resetCounter = 0;
-long stateTimer = 999999;
-
-uint8_t game_state[NUM_PUZZLES];
-uint8_t last_state[NUM_PUZZLES];
-uint8_t sequenceCounter = 0;
-uint8_t lastCounter = 255;
-uint16_t input_threshhold[12];
-uint16_t last_threshhold[12];
-uint8_t currentTam = 0;
-uint8_t lastTam = 255;
-uint16_t currentAmplitude = 0;
-uint16_t lastAmplitude = 1023;
-const uint8_t resLength[4] = {1,1,3,24};
 
 void puzzle_init(void);
 void checkSolution(void);
@@ -135,8 +103,6 @@ void puzzle_loop(void);
 void reset_loop(void);
 void resetCountdown(void);
 void resumeGame(void);
-void draw_header(void);
-void draw_state(uint8_t puzzle_num);
 
 const char *disconnectReason[]{
   "TCP Disconnected",
@@ -327,6 +293,20 @@ IPAddress dns2IP      = IPAddress(8, 8, 8, 8);
 
 //////////////////////////////////////////////////////////
 
+/******************************************
+   // Defined in AsyncESP8266_W5500_Manager.hpp
+  typedef struct
+  {
+    IPAddress _sta_static_ip;
+    IPAddress _sta_static_gw;
+    IPAddress _sta_static_sn;
+    #if USE_CONFIGURABLE_DNS
+    IPAddress _sta_static_dns1;
+    IPAddress _sta_static_dns2;
+    #endif
+  }  ETH_STA_IPConfig;
+******************************************/
+
 ETH_STA_IPConfig EthSTA_IPconfig;
 
 //////////////////////////////////////////////////////////
@@ -392,7 +372,6 @@ void heartBeatPrint()
   {
     Serial.print(F(" "));
   }
-  draw_header();
 
 #endif
 }
@@ -524,15 +503,24 @@ void initEthernet()
 
   if (!eth.begin())
   {
-    Serial.println(F("w5500 Ethernet breakout not detected"));
+    Serial.println("No Ethernet hardware ... Stop here");
+
+    while (true)
+    {
+      delay(1000);
+    }
   }
   else
   {
-    long ethTimer = millis();
-    Serial.print(F("Connecting to network : "));
-    while (!eth.connected() && millis() - ethTimer < 2000);
+    Serial.print("Connecting to network : ");
+
+    if (!eth.connected())
+    {
+      Serial.print(".");
+      //delay(1000);
+    }
   }
-  draw_header();
+
   Serial.println();
 
 #if USING_DHCP
@@ -543,51 +531,6 @@ void initEthernet()
 
   Serial.println(eth.localIP());
 
-}
-
-//////////////////////////////////////////////////////////
-
-void getPuzzleStatus() {
-  char cmd;
-  uint8_t opt_1;
-  uint32_t opt_2;
-  for(int i=0; i<4; i++){
-    Wire.beginTransmission(I2C_SLAVE);
-    cmd = 'Z';
-    opt_1 = i;
-    opt_2 = 0;
-    I2C_writeAnything(cmd);
-    I2C_writeAnything(opt_1);
-    I2C_writeAnything(opt_2);
-    Wire.endTransmission();
-    Wire.requestFrom(I2C_SLAVE, resLength[i]);
-    while (Wire.available()) { // slave may send less than requested
-      switch(i){
-        case 0:
-          I2C_readAnything(game_state[0]);
-          break;
-        case 1:
-          I2C_readAnything(sequenceCounter);
-          break;
-        case 2:
-          I2C_readAnything(currentTam);
-          I2C_readAnything(currentAmplitude);
-          break;
-        case 3:
-          for(int j=0; j<12; j++){
-            I2C_readAnything(input_threshhold[j]);
-          }
-          break;
-        default:
-          break;
-      }
-    }
-  }
-  draw_state(0);
-  last_state[0] = game_state[0];
-  lastCounter = sequenceCounter;
-  lastTam = currentTam;
-  lastAmplitude = currentAmplitude;
 }
 
 //////////////////////////////////////////////////////////
@@ -636,9 +579,6 @@ void onMqttUnsubscribe(uint16_t packetId) {
 void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
   String message;
   String strTopic;
-  char cmd;
-  uint8_t opt_1;
-  uint32_t opt_2;
   for(int i = 0; i < len; i++) {
     message += (char)payload[i];
   }
@@ -648,49 +588,31 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   Serial.print("Message received: ");
   Serial.println(message);
   for(int i=0; i<NUM_PUZZLES; i++){
-    if(strTopic == "home/location/device/set/state"){
-      mqttClient.publish(state_topic[i], 1, true, payload);
-      Wire.beginTransmission(I2C_SLAVE);
-      cmd = 'S';
-      opt_1 = atoi(payload);
-      opt_2 = 0;
-      I2C_writeAnything(cmd);
-      I2C_writeAnything(opt_1);
-      I2C_writeAnything(opt_2);
-      Wire.endTransmission();
-      game_state[i] = atoi(payload);
-      draw_state(i);
-      
-      if(message == PUZZLE_RESET){
-        Serial.println(set_message[2]);
-        flag_reset = true;
-        resetCounter = RESET_DELAY;
-        puzzleResetRoutine.detach();
-        puzzleResetRoutine.attach(1, resetCountdown);
-      }
-      else{
-        Serial.println(set_message[0]);
-        flag_reset = false;
-        puzzleResetRoutine.detach();
-      }
+    if(strTopic == sub_topic[i] && message == PUZZLE_SOLVED){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_SOLVED);
+      Serial.println(set_message[0]);
+      game_state[i] = atoi(PUZZLE_SOLVED);
+      flag_reset = false;
+      puzzleResetRoutine.detach();
     }
-    else if(strTopic == "home/location/device/set/threshhold"){
-      // Nothing to do but send the command over
-      Wire.beginTransmission(I2C_SLAVE);
-      cmd = 'T';
-      opt_1 = 0;
-      opt_2 = atoi(payload);
-      Serial.print("Cmd: ");
-      Serial.print(cmd);
-      Serial.print(" opt_1: ");
-      Serial.print(opt_1);
-      Serial.print(" opt_2: ");
-      Serial.println(opt_2);
-      I2C_writeAnything(cmd);
-      I2C_writeAnything(opt_1);
-      I2C_writeAnything(opt_2);
-      Wire.endTransmission();
+    else if(strTopic == sub_topic[i] && message == PUZZLE_READY){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_READY);
+      Serial.println(set_message[1]);
+      game_state[i] = atoi(PUZZLE_READY);
+      flag_reset = false;
+      puzzleResetRoutine.detach();
     }
+  }
+  if(message == PUZZLE_RESET){
+    for(int i=0; i<NUM_PUZZLES; i++){
+      mqttClient.publish(state_topic[i], 1, true, PUZZLE_RESET);
+      game_state[i] = atoi(PUZZLE_RESET);
+    }
+    Serial.println(set_message[2]);
+    flag_reset = true;
+    resetCounter = RESET_DELAY;
+    puzzleResetRoutine.detach();
+    puzzleResetRoutine.attach(1, resetCountdown);
   }
 }
 
@@ -719,59 +641,6 @@ void resumeGame(void){
   flag_reset = false;
   for(int i=0; i<NUM_PUZZLES; i++){
     game_state[i] = atoi(PUZZLE_READY);
-    draw_state(i);
-  }
-}
-
-// Creates the info located in the yellow section of the LCD
-void draw_header(void){
-  uint8_t ip_len = eth.localIP().toString().length() + 1;
-  char ip_str[ip_len];
-  eth.localIP().toString().toCharArray(ip_str, ip_len);
-  u8x8.setFont(u8x8_font_open_iconic_check_1x1);
-  if(eth.connected()){
-    u8x8.drawGlyph(2, 1, 64);
-  }
-  else{
-    u8x8.drawGlyph(2, 1, 68);
-  }
-  if(mqttClient.connected()){
-    u8x8.drawGlyph(8, 1, 64);
-  }
-  else{
-    u8x8.drawGlyph(8, 1, 68);
-  }
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.drawString(3,2,ip_str);
-}
-
-void draw_state(uint8_t puzzle_num){
-  char convertedValue[16];
-  const char clearLine[16] = "               ";
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
-
-  if(game_state[0] != last_state[0]){
-    u8x8.drawString(12,3,"    ");
-    sprintf(convertedValue, "Game State: %d", game_state[0]);
-    u8x8.drawString(0,3,convertedValue);
-  }
-
-  if(sequenceCounter != lastCounter){
-    u8x8.drawString(11,4,"     ");
-    sprintf(convertedValue, "# Correct: %d", sequenceCounter);
-    u8x8.drawString(0,4,convertedValue);
-  }
-
-  if(currentTam != lastTam){
-    u8x8.drawString(10,5,"      ");
-    sprintf(convertedValue, "Last Tam: %d", currentTam + 1);
-    u8x8.drawString(0,5,convertedValue);
-  }
-
-  if(currentAmplitude != lastAmplitude){
-    u8x8.drawString(9,6,"       ");
-    sprintf(convertedValue, "Tam Val: %d", currentAmplitude);
-    u8x8.drawString(0,6,convertedValue);
   }
 }
 
@@ -782,21 +651,10 @@ void setup()
   pinMode(PIN_LED, OUTPUT);
 
   puzzle_init();
-
-  Wire.begin(SDA_PIN, SCL_PIN, I2C_MASTER);
-  
-  u8x8.begin();
-  u8x8.setPowerSave(0);
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
-  u8x8.drawString(0,0,"Random Prop Demo");
-  u8x8.drawString(4,1,"Eth");
-  u8x8.drawString(10,1,"MQTT");
-  u8x8.drawString(0,2,"IP:");
   
   for(int i=0; i<NUM_PUZZLES; i++){
     game_state[i] = 1;
     flag_solved[i] = false;
-    draw_state(i);
   }
   for(int i=0; i<NUM_SENSORS; i++){
     last_sensor_state[i] = 0;
@@ -951,7 +809,6 @@ void setup()
   {
     Serial.print(F("Starting configuration portal @ "));
     Serial.println(eth.localIP());
-    draw_header();
 
     digitalWrite(PIN_LED, LED_ON); // turn the LED on by making the voltage LOW to tell us we are in configuration mode.
 
@@ -1072,18 +929,13 @@ void loop()
   // You can also call drd.stop() when you wish to no longer
   // consider the next reset as a double reset.
   drd->loop();
-  check_status();
 
-  if(millis() - stateTimer > 1000){
-    getPuzzleStatus();
-    
-    stateTimer = millis();
-  }
-  
-  /*if(!flag_reset){
+  // put your main code here, to run repeatedly
+  check_status();
+  if(!flag_reset){
     puzzle_loop();
   }
   else{
     reset_loop();
-  }*/
+  }
 }
